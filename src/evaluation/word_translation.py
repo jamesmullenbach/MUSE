@@ -12,7 +12,7 @@ import numpy as np
 import torch
 
 from ..utils import get_nn_avg_dist
-
+from ..dictionary import Dictionary
 
 DIC_EVAL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'data', 'crosslingual', 'dictionaries')
 
@@ -20,7 +20,7 @@ DIC_EVAL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '
 logger = getLogger()
 
 
-def load_identical_char_dico(word2id1, word2id2):
+def load_identical_char_dico(word2id1, word2id2, subsample=1):
     """
     Build a dictionary of identical character strings.
     """
@@ -31,6 +31,11 @@ def load_identical_char_dico(word2id1, word2id2):
 
     logger.info("Found %i pairs of identical character strings." % len(pairs))
 
+    #sub sample matching words for mimic simulation
+    if subsample < 1:
+        np.random.shuffle(pairs)
+        pairs = pairs[:round(subsample*len(pairs))]
+
     # sort the dictionary by source word frequencies
     pairs = sorted(pairs, key=lambda x: word2id1[x[0]])
     dico = torch.LongTensor(len(pairs), 2)
@@ -38,7 +43,13 @@ def load_identical_char_dico(word2id1, word2id2):
         dico[i, 0] = word2id1[word1]
         dico[i, 1] = word2id2[word2]
 
-    return dico
+    common = set([pair[0] for pair in pairs])
+    if subsample < 1:
+        word2id1 = {(word + '_s1' if word not in common else word): id for word,id in word2id1.items()}
+        word2id2 = {(word + '_s2' if word not in common else word): id for word,id in word2id2.items()}
+    id2word1 = {id:word for word,id in word2id1.items()}
+    id2word2 = {id:word for word,id in word2id2.items()}
+    return dico, (id2word1, word2id1), (id2word2, word2id2)
 
 
 def load_dictionary(path, word2id1, word2id2):

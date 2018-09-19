@@ -39,7 +39,7 @@ parser.add_argument("--max_vocab", type=int, default=200000, help="Maximum vocab
 # training refinement
 parser.add_argument("--n_refinement", type=int, default=5, help="Number of refinement iterations (0 to disable the refinement procedure)")
 # dictionary creation parameters (for refinement)
-parser.add_argument("--dico_train", type=str, default="default", help="Path to training dictionary (default: use identical character strings)")
+parser.add_argument("--dico_train", type=str, default="identical_char", help="Path to training dictionary (default: use identical character strings)")
 parser.add_argument("--dico_eval", type=str, default="default", help="Path to evaluation dictionary")
 parser.add_argument("--dico_method", type=str, default='csls_knn_10', help="Method used for dictionary generation (nn/invsm_beta_30/csls_knn_10)")
 parser.add_argument("--dico_build", type=str, default='S2T&T2S', help="S2T,T2S,S2T|T2S,S2T&T2S")
@@ -47,6 +47,7 @@ parser.add_argument("--dico_threshold", type=float, default=0, help="Threshold c
 parser.add_argument("--dico_max_rank", type=int, default=10000, help="Maximum dictionary words rank (0 to disable)")
 parser.add_argument("--dico_min_size", type=int, default=0, help="Minimum generated dictionary size (0 to disable)")
 parser.add_argument("--dico_max_size", type=int, default=0, help="Maximum generated dictionary size (0 to disable)")
+parser.add_argument("--subsample", type=float, default=1, help="Fraction of matching pairs to sub-sample to simulate vocabulary mismatch (default 1 = no subsample)")
 # reload pre-trained embeddings
 parser.add_argument("--src_emb", type=str, default='', help="Reload source embeddings")
 parser.add_argument("--tgt_emb", type=str, default='', help="Reload target embeddings")
@@ -75,7 +76,7 @@ evaluator = Evaluator(trainer)
 
 # load a training dictionary. if a dictionary path is not provided, use a default
 # one ("default") or create one based on identical character strings ("identical_char")
-trainer.load_training_dico(params.dico_train)
+trainer.load_training_dico(params.dico_train, params.subsample)
 
 # define the validation metric
 VALIDATION_METRIC = VALIDATION_METRIC_UNSUP if params.dico_train == 'identical_char' else VALIDATION_METRIC_SUP

@@ -7,15 +7,18 @@
 
 import os
 from logging import getLogger
+import numpy as np
 import scipy
 import scipy.linalg
 import torch
 from torch.autograd import Variable
 from torch.nn import functional as F
+from tqdm import tqdm
 
 from .utils import get_optimizer, load_embeddings, normalize_embeddings, export_embeddings
 from .utils import clip_parameters
 from .dico_builder import build_dictionary
+from .dictionary import Dictionary
 from .evaluation.word_translation import DIC_EVAL_PATH, load_identical_char_dico, load_dictionary
 
 
@@ -131,7 +134,7 @@ class Trainer(object):
 
         return 2 * self.params.batch_size
 
-    def load_training_dico(self, dico_train):
+    def load_training_dico(self, dico_train, subsample):
         """
         Load training dictionary.
         """
@@ -140,7 +143,11 @@ class Trainer(object):
 
         # identical character strings
         if dico_train == "identical_char":
-            self.dico = load_identical_char_dico(word2id1, word2id2)
+            self.dico, src_dicts, tgt_dicts = load_identical_char_dico(word2id1, word2id2, subsample)
+            self.src_dico = Dictionary(*src_dicts, self.params.src_lang)
+            self.tgt_dico = Dictionary(*tgt_dicts, self.params.tgt_lang)
+            self.params.src_dico = self.src_dico
+            self.params.tgt_dico = self.tgt_dico
         # use one of the provided dictionary
         elif dico_train == "default":
             filename = '%s-%s.0-5000.txt' % (self.params.src_lang, self.params.tgt_lang)
@@ -255,12 +262,43 @@ class Trainer(object):
         normalize_embeddings(src_emb, params.normalize_embeddings, mean=params.src_mean)
         normalize_embeddings(tgt_emb, params.normalize_embeddings, mean=params.tgt_mean)
 
+        #combine vocabularies
+        common = set(self.src_dico.word2id.keys()).intersection(set(self.tgt_dico.word2id.keys()))
+        self.src_dico.word2id = {(word[:-3] if word.endswith('_s1') else word):ix for word, ix in self.src_dico.word2id.items()}
+        self.tgt_dico.word2id = {(word[:-3] if word.endswith('_s2') else word):ix for word, ix in self.tgt_dico.word2id.items()}
+        full_vocab = sorted(set(self.src_dico.word2id.keys()) \
+                    .union(set(self.tgt_dico.word2id.keys())))
+
         # map source embeddings to the target space
         bs = 4096
         logger.info("Map source embeddings to the target space ...")
-        for i, k in enumerate(range(0, len(src_emb), bs)):
-            x = Variable(src_emb[k:k + bs], volatile=True)
-            src_emb[k:k + bs] = self.mapping(x.cuda() if params.cuda else x).data.cpu()
+        E1 = np.zeros((len(full_vocab), src_emb.shape[1]))
+        E2 = np.zeros((len(full_vocab), src_emb.shape[1]))
+        for i, word in tqdm(enumerate(full_vocab)):
+            if word in self.src_dico.word2id.keys():
+                E1[i] = self.mapping(Variable(src_emb[self.src_dico.word2id[word]]))
+            else:
+                E1[i] = tgt_emb[self.tgt_dico.word2id[word]]
+            if word in self.tgt_dico.word2id.keys():
+                E2[i] = self.tgt_dico.word2id[word]
+            else:
+                E2[i] = self.mapping(Variable(src_emb[self.src_dico.word2id[word]]))
+        src_emb = torch.from_numpy(E1)
+        tgt_emb = torch.from_numpy(E2)
+
+        #remake dicts
+        id2word = {i:word for i, word in enumerate(full_vocab)}
+        word2id = {word:i for i, word in id2word.items()}
+        src_dico = Dictionary(id2word, word2id, 'site1')
+        tgt_dico = Dictionary(id2word, word2id, 'site2')
+        self.src_dico = src_dico
+        self.tgt_dico = tgt_dico
+        self.params.src_dico = src_dico
+        self.params.tgt_dico = tgt_dico
+
+        #for i, k in enumerate(range(0, len(src_emb), bs)):
+        #    x = Variable(src_emb[k:k + bs], volatile=True)
+        #    src_emb[k:k + bs] = self.mapping(x.cuda() if params.cuda else x).data.cpu()
 
         # write embeddings to the disk
         export_embeddings(src_emb, tgt_emb, params)
