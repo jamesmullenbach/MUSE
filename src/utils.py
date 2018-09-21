@@ -237,12 +237,11 @@ def get_exp_path(params):
     if not os.path.exists(exp_folder):
         subprocess.Popen("mkdir %s" % exp_folder, shell=True).wait()
     if params.exp_id == '':
-        chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
-        while True:
-            exp_id = ''.join(random.choice(chars) for _ in range(10))
-            exp_path = os.path.join(exp_folder, exp_id)
-            if not os.path.isdir(exp_path):
-                break
+        if hasattr(params, 'subsample'):
+            name = f'sup_{params.src_lang}_{params.tgt_lang}_emb{params.emb_dim}_iters{params.n_refinement}_sub{args.subsample}'
+        else:
+            name = f'unsup_{params.src_lang}_{params.tgt_lang}_emb{params.emb_dim}_train{params.n_epochs}_iters{params.n_refinement}'
+        exp_path = os.path.join(exp_folder, name)
     else:
         exp_path = os.path.join(exp_folder, params.exp_id)
         assert not os.path.isdir(exp_path), exp_path

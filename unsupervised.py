@@ -46,7 +46,7 @@ parser.add_argument("--dis_dropout", type=float, default=0., help="Discriminator
 parser.add_argument("--dis_input_dropout", type=float, default=0.1, help="Discriminator input dropout")
 parser.add_argument("--dis_steps", type=int, default=5, help="Discriminator steps")
 parser.add_argument("--dis_lambda", type=float, default=1, help="Discriminator loss feedback coefficient")
-parser.add_argument("--dis_most_frequent", type=int, default=75000, help="Select embeddings of the k most frequent words for discrimination (0 to disable)")
+parser.add_argument("--dis_most_frequent", type=int, default=1000, help="Select embeddings of the k most frequent words for discrimination (0 to disable)")
 parser.add_argument("--dis_smooth", type=float, default=0.1, help="Discriminator smooth predictions")
 parser.add_argument("--dis_clip_weights", type=float, default=0, help="Clip discriminator weights (0 to disable)")
 # training adversarial

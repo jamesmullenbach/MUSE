@@ -272,33 +272,30 @@ class Trainer(object):
         # map source embeddings to the target space
         bs = 4096
         logger.info("Map source embeddings to the target space ...")
-        E1 = np.zeros((len(full_vocab), src_emb.shape[1]))
-        E2 = np.zeros((len(full_vocab), src_emb.shape[1]))
+        E1 = Variable(torch.zeros((len(full_vocab), src_emb.shape[1])))
+        E2 = Variable(torch.zeros((len(full_vocab), src_emb.shape[1])))
+        id2word, word2id = {}, {}
         for i, word in tqdm(enumerate(full_vocab)):
             if word in self.src_dico.word2id.keys():
                 E1[i] = self.mapping(Variable(src_emb[self.src_dico.word2id[word]]))
             else:
                 E1[i] = tgt_emb[self.tgt_dico.word2id[word]]
             if word in self.tgt_dico.word2id.keys():
-                E2[i] = self.tgt_dico.word2id[word]
+                E2[i] = tgt_emb[self.tgt_dico.word2id[word]]
             else:
                 E2[i] = self.mapping(Variable(src_emb[self.src_dico.word2id[word]]))
-        src_emb = torch.from_numpy(E1)
-        tgt_emb = torch.from_numpy(E2)
+            id2word[i] = word
+            word2id[word] = i
+        src_emb = E1.clone()
+        tgt_emb = E2.clone()
 
         #remake dicts
-        id2word = {i:word for i, word in enumerate(full_vocab)}
-        word2id = {word:i for i, word in id2word.items()}
         src_dico = Dictionary(id2word, word2id, 'site1')
         tgt_dico = Dictionary(id2word, word2id, 'site2')
         self.src_dico = src_dico
         self.tgt_dico = tgt_dico
         self.params.src_dico = src_dico
         self.params.tgt_dico = tgt_dico
-
-        #for i, k in enumerate(range(0, len(src_emb), bs)):
-        #    x = Variable(src_emb[k:k + bs], volatile=True)
-        #    src_emb[k:k + bs] = self.mapping(x.cuda() if params.cuda else x).data.cpu()
 
         # write embeddings to the disk
         export_embeddings(src_emb, tgt_emb, params)

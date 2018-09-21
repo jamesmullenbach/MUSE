@@ -29,12 +29,12 @@ def load_identical_char_dico(word2id1, word2id2, subsample=1):
         raise Exception("No identical character strings were found. "
                         "Please specify a dictionary.")
 
-    logger.info("Found %i pairs of identical character strings." % len(pairs))
 
     #sub sample matching words for mimic simulation
     if subsample < 1:
         np.random.shuffle(pairs)
         pairs = pairs[:round(subsample*len(pairs))]
+    logger.info("Found %i pairs of identical character strings." % len(pairs))
 
     # sort the dictionary by source word frequencies
     pairs = sorted(pairs, key=lambda x: word2id1[x[0]])
