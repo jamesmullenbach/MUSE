@@ -52,7 +52,7 @@ parser.add_argument("--dis_clip_weights", type=float, default=0, help="Clip disc
 # training adversarial
 parser.add_argument("--adversarial", type=bool_flag, default=True, help="Use adversarial training")
 parser.add_argument("--n_epochs", type=int, default=5, help="Number of epochs")
-parser.add_argument("--epoch_size", type=int, default=1000000, help="Iterations per epoch")
+parser.add_argument("--epoch_size", type=int, default=100000, help="Iterations per epoch")
 parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
 parser.add_argument("--map_optimizer", type=str, default="sgd,lr=0.1", help="Mapping optimizer")
 parser.add_argument("--dis_optimizer", type=str, default="sgd,lr=0.1", help="Discriminator optimizer")
@@ -70,8 +70,8 @@ parser.add_argument("--dico_max_rank", type=int, default=15000, help="Maximum di
 parser.add_argument("--dico_min_size", type=int, default=0, help="Minimum generated dictionary size (0 to disable)")
 parser.add_argument("--dico_max_size", type=int, default=0, help="Maximum generated dictionary size (0 to disable)")
 # reload pre-trained embeddings
-parser.add_argument("--src_emb", type=str, default="", help="Reload source embeddings")
-parser.add_argument("--tgt_emb", type=str, default="", help="Reload target embeddings")
+parser.add_argument("--src_emb", type=str, default="", help="source embeddings file")
+parser.add_argument("--tgt_emb", type=str, default="", help="target embeddings file")
 parser.add_argument("--normalize_embeddings", type=str, default="", help="Normalize embeddings before training")
 
 

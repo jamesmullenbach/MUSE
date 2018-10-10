@@ -275,6 +275,8 @@ class Trainer(object):
         E1 = Variable(torch.zeros((len(full_vocab), src_emb.shape[1])))
         E2 = Variable(torch.zeros((len(full_vocab), src_emb.shape[1])))
         id2word, word2id = {}, {}
+        #put mapping on cpu for simplicity, so we don't put every loaded emb on gpu individually
+        self.mapping.cpu()
         for i, word in tqdm(enumerate(full_vocab)):
             if word in self.src_dico.word2id.keys():
                 E1[i] = self.mapping(Variable(src_emb[self.src_dico.word2id[word]]))
