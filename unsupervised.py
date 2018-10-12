@@ -73,6 +73,7 @@ parser.add_argument("--dico_max_size", type=int, default=0, help="Maximum genera
 parser.add_argument("--src_emb", type=str, default="", help="source embeddings file")
 parser.add_argument("--tgt_emb", type=str, default="", help="target embeddings file")
 parser.add_argument("--normalize_embeddings", type=str, default="", help="Normalize embeddings before training")
+parser.add_argument("--codes", const=True, action="store_const", help="flag to signify the input embeddings are both for codes, for vocab building")
 
 
 # parse parameters
