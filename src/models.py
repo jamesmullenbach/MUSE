@@ -43,14 +43,14 @@ def build_model(params, with_dis):
     Build all components of the model.
     """
     # source embeddings
-    src_dico, _src_emb = load_embeddings(params, source=True, full_vocab=params.codes)
+    src_dico, _src_emb = load_embeddings(params, source=True, full_vocab=params.full_vocab)
     params.src_dico = src_dico
     src_emb = nn.Embedding(len(src_dico), params.emb_dim, sparse=True)
     src_emb.weight.data.copy_(_src_emb)
 
     # target embeddings
     if params.tgt_lang:
-        tgt_dico, _tgt_emb = load_embeddings(params, source=False, full_vocab=params.codes)
+        tgt_dico, _tgt_emb = load_embeddings(params, source=False, full_vocab=params.full_vocab)
         params.tgt_dico = tgt_dico
         tgt_emb = nn.Embedding(len(tgt_dico), params.emb_dim, sparse=True)
         tgt_emb.weight.data.copy_(_tgt_emb)

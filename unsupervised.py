@@ -10,6 +10,8 @@ import time
 import json
 import argparse
 from collections import OrderedDict
+
+from gensim.models import KeyedVectors
 import numpy as np
 import torch
 
@@ -72,8 +74,10 @@ parser.add_argument("--dico_max_size", type=int, default=0, help="Maximum genera
 # reload pre-trained embeddings
 parser.add_argument("--src_emb", type=str, default="", help="source embeddings file")
 parser.add_argument("--tgt_emb", type=str, default="", help="target embeddings file")
+parser.add_argument("--glo_emb", type=str, default="", help="global embeddings file for evaluation")
+parser.add_argument("--removed_keys_file", type=str, help="file containing keys removed from site 0. site 1 file will be inferred")
 parser.add_argument("--normalize_embeddings", type=str, default="", help="Normalize embeddings before training")
-parser.add_argument("--codes", const=True, action="store_const", help="flag to signify the input embeddings are both for codes, for vocab building")
+parser.add_argument("--full_vocab", action="store_true", help="flag to signify the input embeddings comprise the whole vocabulary")
 
 
 # parse parameters
@@ -94,7 +98,8 @@ assert params.export in ["", "txt", "pth"]
 # build model / trainer / evaluator
 logger = initialize_exp(params)
 src_emb, tgt_emb, mapping, discriminator = build_model(params, True)
-trainer = Trainer(src_emb, tgt_emb, mapping, discriminator, params)
+glo_emb = KeyedVectors.load_word2vec_format(params.glo_emb)
+trainer = Trainer(src_emb, tgt_emb, glo_emb, mapping, discriminator, params)
 evaluator = Evaluator(trainer)
 
 
@@ -185,3 +190,7 @@ if params.n_refinement > 0:
 if params.export:
     trainer.reload_best()
     trainer.export()
+
+# evaluate global ranking after combining the results in export()
+to_log = OrderedDict({'n_iter': n_iter})
+evaluator.global_ranking_eval(to_log)

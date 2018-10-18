@@ -27,12 +27,13 @@ logger = getLogger()
 
 class Trainer(object):
 
-    def __init__(self, src_emb, tgt_emb, mapping, discriminator, params):
+    def __init__(self, src_emb, tgt_emb, glo_emb, mapping, discriminator, params):
         """
         Initialize trainer script.
         """
         self.src_emb = src_emb
         self.tgt_emb = tgt_emb
+        self.glo_emb = glo_emb
         self.src_dico = params.src_dico
         self.tgt_dico = getattr(params, 'tgt_dico', None)
         self.mapping = mapping
@@ -294,10 +295,14 @@ class Trainer(object):
         #remake dicts
         src_dico = Dictionary(id2word, word2id, 'site1')
         tgt_dico = Dictionary(id2word, word2id, 'site2')
+        params.src_dico = src_dico
+        params.tgt_dico = tgt_dico
         self.src_dico = src_dico
         self.tgt_dico = tgt_dico
         self.params.src_dico = src_dico
         self.params.tgt_dico = tgt_dico
+        self.src_emb = src_emb
+        self.tgt_emb = tgt_emb
 
         # write embeddings to the disk
         export_embeddings(src_emb, tgt_emb, params)

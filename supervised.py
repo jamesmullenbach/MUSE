@@ -9,6 +9,8 @@ import os
 import json
 import argparse
 from collections import OrderedDict
+
+from gensim.models import KeyedVectors
 import torch
 
 from src.utils import bool_flag, initialize_exp
@@ -51,7 +53,10 @@ parser.add_argument("--subsample", type=float, default=1, help="Fraction of matc
 # reload pre-trained embeddings
 parser.add_argument("--src_emb", type=str, default='', help="Reload source embeddings")
 parser.add_argument("--tgt_emb", type=str, default='', help="Reload target embeddings")
+parser.add_argument("--glo_emb", type=str, default="", help="global embeddings file for evaluation")
+parser.add_argument("--removed_keys_file", type=str, help="file containing keys removed from site 0. site 1 file will be inferred")
 parser.add_argument("--normalize_embeddings", type=str, default="", help="Normalize embeddings before training")
+parser.add_argument("--full_vocab", action="store_true", help="flag to signify the input embeddings comprise the whole vocabulary")
 
 
 # parse parameters
@@ -71,7 +76,8 @@ assert params.export in ["", "txt", "pth"]
 # build logger / model / trainer / evaluator
 logger = initialize_exp(params)
 src_emb, tgt_emb, mapping, _ = build_model(params, False)
-trainer = Trainer(src_emb, tgt_emb, mapping, None, params)
+glo_emb = KeyedVectors.load_word2vec_format(params.glo_emb) if params.glo_emb else None
+trainer = Trainer(src_emb, tgt_emb, glo_emb, mapping, None, params)
 evaluator = Evaluator(trainer)
 
 # load a training dictionary. if a dictionary path is not provided, use a default
@@ -111,3 +117,8 @@ for n_iter in range(params.n_refinement + 1):
 if params.export:
     trainer.reload_best()
     trainer.export()
+
+if params.removed_keys_file and params.glo_emb:
+    # evaluate global ranking after combining the results in export()
+    to_log = OrderedDict({'n_iter': n_iter})
+    evaluator.global_ranking_eval(to_log)

@@ -7,6 +7,9 @@
 
 from logging import getLogger
 from copy import deepcopy
+import os
+
+from gensim.models import KeyedVectors
 import numpy as np
 from torch.autograd import Variable
 from torch import Tensor as torch_tensor
@@ -34,6 +37,7 @@ class Evaluator(object):
         self.mapping = trainer.mapping
         self.discriminator = trainer.discriminator
         self.params = trainer.params
+        self.glo_emb = trainer.glo_emb
 
     def monolingual_wordsim(self, to_log):
         """
@@ -212,11 +216,40 @@ class Evaluator(object):
         """
         Run all evaluations.
         """
-        self.monolingual_wordsim(to_log)
-        self.crosslingual_wordsim(to_log)
+        #self.monolingual_wordsim(to_log)
+        #self.crosslingual_wordsim(to_log)
         #self.word_translation(to_log)
         #self.sent_translation(to_log)
         self.dist_mean_cosine(to_log)
+
+    def global_ranking_eval(self, to_log):
+        src_emb = KeyedVectors.load_word2vec_format(os.path.join(self.params.exp_path, 'vectors-%s.txt' % self.params.src_lang))
+        tgt_emb = KeyedVectors.load_word2vec_format(os.path.join(self.params.exp_path, 'vectors-%s.txt' % self.params.tgt_lang))
+        print(len(src_emb.wv.vocab), len(tgt_emb.wv.vocab))
+        assert len(src_emb.wv.vocab) == len(tgt_emb.wv.vocab)
+
+        removed_keys1_file = self.params.removed_keys_file.replace('_0_', '_1_')
+        missing_keys0 = set([line.strip() for line in open(self.params.removed_keys_file)])
+        missing_keys1 = set([line.strip() for line in open(removed_keys1_file)])
+        ranks_0 = []
+        ranks_1 = []
+        try:
+            for key in missing_keys0:
+                nn = self.glo_emb.wv.most_similar(key)[0][0]
+                if nn in src_emb.wv.vocab:
+                    rank = src_emb.wv.rank(key, nn)
+                    ranks_0.append(rank)
+            for key in missing_keys1:
+                nn = self.glo_emb.wv.most_similar(key)[0][0]
+                if nn in tgt_emb.wv.vocab:
+                    rank = tgt_emb.wv.rank(key, nn)
+                    ranks_1.append(rank)
+        except:
+            import pdb; pdb.set_trace()
+
+        mean_rank = (np.mean(ranks_0) + np.mean(ranks_1)) / 2
+        std_rank = np.std(np.concatenate((ranks_0, ranks_1)))
+        print(f"mean rank of missing codes: {mean_rank} +/- {std_rank}")
 
     def eval_dis(self, to_log):
         """
