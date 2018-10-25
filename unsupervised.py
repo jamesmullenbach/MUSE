@@ -199,8 +199,8 @@ if params.export:
 to_log = OrderedDict({'n_iter': n_iter})
 if params.cross_modal:
     mr, mr1 = evaluator.desc_to_code_retrieval_eval(to_log)
-    with open('results.log', 'a') as af:
-        af.write(','.join([str(params), str(mr), str(mr1)]) + "\n")
-    #evaluator.word_to_code_retrieval_eval(to_log)
+    wcmr, wcmr1 = evaluator.word_to_codes_retrieval_eval(to_log)
+    with open('exp_results.log', 'a') as af:
+        af.write('\t'.join([str(params), str(mr), str(mr1), str(wcmr), str(wcmr1)]) + "\n")
 else:
     evaluator.global_ranking_eval(to_log)

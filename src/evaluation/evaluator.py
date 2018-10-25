@@ -9,6 +9,7 @@ import csv
 from logging import getLogger
 from copy import deepcopy
 import os
+from collections import defaultdict
 
 from gensim.models import KeyedVectors
 from nltk.tokenize import word_tokenize
@@ -296,6 +297,61 @@ class Evaluator(object):
             ranks.append(rank)
             if len(desc) == 1:
                 rank_1s.append(rank)
+        mr = np.mean(ranks)
+        mr1 = np.mean(rank_1s)
+        print(f"mean rank: {mr}")
+        print(f"mean one-word description rank: {mr1}")
+        return mr, mr1
+
+    def word_to_codes_retrieval_eval(self, to_log, which_is_codes='src'):
+        #load aligned embeddings
+        src_emb = KeyedVectors.load_word2vec_format(os.path.join(self.params.exp_path, 'vectors-%s.txt' % self.params.src_lang))
+        tgt_emb = KeyedVectors.load_word2vec_format(os.path.join(self.params.exp_path, 'vectors-%s.txt' % self.params.tgt_lang))
+        #boilerplate variable assignment
+        if which_is_codes == 'src':
+            code2ix = {code:ix for ix,code in enumerate(sorted(src_emb.wv.vocab.keys()))}
+            ix2code = {ix:code for code,ix in code2ix.items()}
+            code_emb = src_emb
+            word2ix = {word:ix for ix,word in enumerate(sorted(tgt_emb.wv.vocab.keys()))}
+            ix2word = {ix:word for word,ix in word2ix.items()}
+            word_emb = tgt_emb
+        else:
+            word2ix = {word:ix for ix,word in enumerate(sorted(src_emb.wv.vocab.keys()))}
+            ix2word = {ix:word for word,ix in word2ix.items()}
+            word_emb = src_emb
+            code2ix = {code:ix for ix,code in enumerate(sorted(tgt_emb.wv.vocab.keys()))}
+            ix2code = {ix:code for code,ix in code2ix.items()}
+            code_emb = tgt_emb
+
+        #load word2codes lookup
+        word2codes = defaultdict(set)
+        word_1s = set()
+        with open('../../data/D_ICD_DIAGNOSES.csv') as f:
+            r = csv.reader(f)
+            #header
+            next(r)
+            for row in r:
+                cde = 'd_' + row[1]
+                desc = word_tokenize(row[-1])
+                for tok in desc:
+                    if not tok.isnumeric():
+                        if tok in word2ix and cde in code2ix:
+                            word2codes[tok].add(cde)
+                if len(desc) == 1 and desc[0].lower() in word2ix:
+                    word_1s.add(desc[0].lower())
+        ranks = []
+        rank_1s = []
+        for word, codes in word2codes.items():
+            code_dists = code_emb.distances(word_emb[word])
+            closest = np.argsort(code_dists)
+            wranks = []
+            for cde in codes:
+                rank = np.where(closest == code2ix[cde])[0][0]
+                wranks.append(rank)
+            mr = np.mean(wranks)
+            ranks.append(mr)
+            if word in word_1s:
+                rank_1s.append(mr)
         mr = np.mean(ranks)
         mr1 = np.mean(rank_1s)
         print(f"mean rank: {mr}")
