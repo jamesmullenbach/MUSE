@@ -5,11 +5,13 @@
 # LICENSE file in the root directory of this source tree.
 #
 
+import csv
 from logging import getLogger
 from copy import deepcopy
 import os
 
 from gensim.models import KeyedVectors
+from nltk.tokenize import word_tokenize
 import numpy as np
 from torch.autograd import Variable
 from torch import Tensor as torch_tensor
@@ -201,7 +203,7 @@ class Evaluator(object):
             _params.dico_max_size = dico_max_size
             s2t_candidates = get_candidates(src_emb, tgt_emb, _params)
             t2s_candidates = get_candidates(tgt_emb, src_emb, _params)
-            dico = build_dictionary(src_emb, tgt_emb, _params, s2t_candidates, t2s_candidates)
+            dico = build_dictionary(src_emb, tgt_emb, _params, s2t_candidates, t2s_candidates, log=False)
             # mean cosine
             if dico is None:
                 mean_cosine = -1e9
@@ -223,6 +225,7 @@ class Evaluator(object):
         self.dist_mean_cosine(to_log)
 
     def global_ranking_eval(self, to_log):
+        assert self.glo_emb is not None
         src_emb = KeyedVectors.load_word2vec_format(os.path.join(self.params.exp_path, 'vectors-%s.txt' % self.params.src_lang))
         tgt_emb = KeyedVectors.load_word2vec_format(os.path.join(self.params.exp_path, 'vectors-%s.txt' % self.params.tgt_lang))
         print(len(src_emb.wv.vocab), len(tgt_emb.wv.vocab))
@@ -233,23 +236,71 @@ class Evaluator(object):
         missing_keys1 = set([line.strip() for line in open(removed_keys1_file)])
         ranks_0 = []
         ranks_1 = []
-        try:
-            for key in missing_keys0:
-                nn = self.glo_emb.wv.most_similar(key)[0][0]
-                if nn in src_emb.wv.vocab:
-                    rank = src_emb.wv.rank(key, nn)
-                    ranks_0.append(rank)
-            for key in missing_keys1:
-                nn = self.glo_emb.wv.most_similar(key)[0][0]
-                if nn in tgt_emb.wv.vocab:
-                    rank = tgt_emb.wv.rank(key, nn)
-                    ranks_1.append(rank)
-        except:
-            import pdb; pdb.set_trace()
+        for key in missing_keys0:
+            nn = self.glo_emb.wv.most_similar(key)[0][0]
+            if nn in src_emb.wv.vocab:
+                rank = src_emb.wv.rank(key, nn)
+                ranks_0.append(rank)
+        for key in missing_keys1:
+            nn = self.glo_emb.wv.most_similar(key)[0][0]
+            if nn in tgt_emb.wv.vocab:
+                rank = tgt_emb.wv.rank(key, nn)
+                ranks_1.append(rank)
 
         mean_rank = (np.mean(ranks_0) + np.mean(ranks_1)) / 2
         std_rank = np.std(np.concatenate((ranks_0, ranks_1)))
         print(f"mean rank of missing codes: {mean_rank} +/- {std_rank}")
+
+    def desc_to_code_retrieval_eval(self, to_log, which_is_codes='src'):
+        #load aligned embeddings
+        src_emb = KeyedVectors.load_word2vec_format(os.path.join(self.params.exp_path, 'vectors-%s.txt' % self.params.src_lang))
+        tgt_emb = KeyedVectors.load_word2vec_format(os.path.join(self.params.exp_path, 'vectors-%s.txt' % self.params.tgt_lang))
+        #boilerplate variable assignment
+        if which_is_codes == 'src':
+            code2ix = {code:ix for ix,code in enumerate(sorted(src_emb.wv.vocab.keys()))}
+            ix2code = {ix:code for code,ix in code2ix.items()}
+            code_emb = src_emb
+            word2ix = {word:ix for ix,word in enumerate(sorted(tgt_emb.wv.vocab.keys()))}
+            ix2word = {ix:word for word,ix in word2ix.items()}
+            word_emb = tgt_emb
+        else:
+            word2ix = {word:ix for ix,word in enumerate(sorted(src_emb.wv.vocab.keys()))}
+            ix2word = {ix:word for word,ix in word2ix.items()}
+            word_emb = src_emb
+            code2ix = {code:ix for ix,code in enumerate(sorted(tgt_emb.wv.vocab.keys()))}
+            ix2code = {ix:code for code,ix in code2ix.items()}
+            code_emb = tgt_emb
+
+        #load code2desc lookup
+        code2desc = {}
+        with open('../../data/D_ICD_DIAGNOSES.csv') as f:
+            r = csv.reader(f)
+            #header
+            next(r)
+            for row in r:
+                code = 'd_' + row[1]
+                desc = [tok.lower() for tok in word_tokenize(row[-1]) if not tok.isnumeric()]
+                if code in code2ix:
+                    code2desc[code] = desc
+        ranks = []
+        rank_1s = []
+        #now go thru codes. get their description
+        for cde, desc in code2desc.items():
+            desc_repr = np.mean([word_emb[word] for word in desc if word in word2ix],0)
+            if np.any(np.isnan(desc_repr)):
+                continue
+            #get similarity of each code to the description
+            code_dists = code_emb.distances(desc_repr)
+            closest = np.argsort(code_dists)
+            rank = np.where(closest == code2ix[cde])[0][0]
+            ranks.append(rank)
+            if len(desc) == 1:
+                rank_1s.append(rank)
+        mr = np.mean(ranks)
+        mr1 = np.mean(rank_1s)
+        print(f"mean rank: {mr}")
+        print(f"mean one-word description rank: {mr1}")
+        return mr, mr1
 
     def eval_dis(self, to_log):
         """

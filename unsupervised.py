@@ -78,6 +78,7 @@ parser.add_argument("--glo_emb", type=str, default="", help="global embeddings f
 parser.add_argument("--removed_keys_file", type=str, help="file containing keys removed from site 0. site 1 file will be inferred")
 parser.add_argument("--normalize_embeddings", type=str, default="", help="Normalize embeddings before training")
 parser.add_argument("--full_vocab", action="store_true", help="flag to signify the input embeddings comprise the whole vocabulary")
+parser.add_argument("--cross_modal", action="store_true", help="flag to signify we're doing cross-modal alignment, so evaluate on the description stuff")
 
 
 # parse parameters
@@ -98,7 +99,10 @@ assert params.export in ["", "txt", "pth"]
 # build model / trainer / evaluator
 logger = initialize_exp(params)
 src_emb, tgt_emb, mapping, discriminator = build_model(params, True)
-glo_emb = KeyedVectors.load_word2vec_format(params.glo_emb)
+if params.glo_emb:
+    glo_emb = KeyedVectors.load_word2vec_format(params.glo_emb)
+else:
+    glo_emb = None
 trainer = Trainer(src_emb, tgt_emb, glo_emb, mapping, discriminator, params)
 evaluator = Evaluator(trainer)
 
@@ -189,8 +193,14 @@ if params.n_refinement > 0:
 # export embeddings
 if params.export:
     trainer.reload_best()
-    trainer.export()
+    trainer.export(params.cross_modal)
 
 # evaluate global ranking after combining the results in export()
 to_log = OrderedDict({'n_iter': n_iter})
-evaluator.global_ranking_eval(to_log)
+if params.cross_modal:
+    mr, mr1 = evaluator.desc_to_code_retrieval_eval(to_log)
+    with open('results.log', 'a') as af:
+        af.write(','.join([str(params), str(mr), str(mr1)]) + "\n")
+    #evaluator.word_to_code_retrieval_eval(to_log)
+else:
+    evaluator.global_ranking_eval(to_log)

@@ -140,11 +140,12 @@ def get_candidates(emb1, emb2, params):
     return all_pairs
 
 
-def build_dictionary(src_emb, tgt_emb, params, s2t_candidates=None, t2s_candidates=None):
+def build_dictionary(src_emb, tgt_emb, params, s2t_candidates=None, t2s_candidates=None, log=True):
     """
     Build a training dictionary given current embeddings / mapping.
     """
-    logger.info("Building the train dictionary ...")
+    if log:
+        logger.info("Building the train dictionary ...")
     s2t = 'S2T' in params.dico_build
     t2s = 'T2S' in params.dico_build
     assert s2t or t2s
@@ -174,5 +175,6 @@ def build_dictionary(src_emb, tgt_emb, params, s2t_candidates=None, t2s_candidat
                 return None
         dico = torch.LongTensor(list([[int(a), int(b)] for (a, b) in final_pairs]))
 
-    logger.info('New train dictionary of %i pairs.' % dico.size(0))
+    if log:
+        logger.info('New train dictionary of %i pairs.' % dico.size(0))
     return dico.cuda() if params.cuda else dico

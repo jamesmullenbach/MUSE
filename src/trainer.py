@@ -248,7 +248,7 @@ class Trainer(object):
         assert to_reload.size() == W.size()
         W.copy_(to_reload.type_as(W))
 
-    def export(self):
+    def export(self, cross_modal):
         """
         Export embeddings.
         """
@@ -273,28 +273,44 @@ class Trainer(object):
         # map source embeddings to the target space
         bs = 4096
         logger.info("Map source embeddings to the target space ...")
-        E1 = Variable(torch.zeros((len(full_vocab), src_emb.shape[1])))
-        E2 = Variable(torch.zeros((len(full_vocab), src_emb.shape[1])))
-        id2word, word2id = {}, {}
         #put mapping on cpu for simplicity, so we don't put every loaded emb on gpu individually
         self.mapping.cpu()
-        for i, word in tqdm(enumerate(full_vocab)):
-            if word in self.src_dico.word2id.keys():
+        if not cross_modal:
+            E1 = Variable(torch.zeros((len(full_vocab), src_emb.shape[1])))
+            E2 = Variable(torch.zeros((len(full_vocab), src_emb.shape[1])))
+            id2word, word2id = {}, {}
+            for i, word in tqdm(enumerate(full_vocab)):
+                if word in self.src_dico.word2id.keys():
+                    E1[i] = self.mapping(Variable(src_emb[self.src_dico.word2id[word]]))
+                else:
+                    E1[i] = tgt_emb[self.tgt_dico.word2id[word]]
+                if word in self.tgt_dico.word2id.keys():
+                    E2[i] = tgt_emb[self.tgt_dico.word2id[word]]
+                else:
+                    E2[i] = self.mapping(Variable(src_emb[self.src_dico.word2id[word]]))
+                id2word[i] = word
+                word2id[word] = i
+            src_dico = Dictionary(id2word, word2id, self.params.src_lang)
+            tgt_dico = Dictionary(id2word, word2id, self.params.tgt_lang)
+        else:
+            E1 = Variable(torch.zeros((len(self.src_dico.word2id)), src_emb.shape[1]))
+            E2 = Variable(torch.zeros((len(self.tgt_dico.word2id)), src_emb.shape[1]))
+            id2src, src2id = {}, {}
+            id2tgt, tgt2id = {}, {}
+            for i, (word, ix) in tqdm(enumerate(sorted(self.src_dico.word2id.items()))):
                 E1[i] = self.mapping(Variable(src_emb[self.src_dico.word2id[word]]))
-            else:
-                E1[i] = tgt_emb[self.tgt_dico.word2id[word]]
-            if word in self.tgt_dico.word2id.keys():
+                id2src[i] = word
+                src2id[word] = i
+            for i, (word, ix) in tqdm(enumerate(sorted(self.tgt_dico.word2id.items()))):
                 E2[i] = tgt_emb[self.tgt_dico.word2id[word]]
-            else:
-                E2[i] = self.mapping(Variable(src_emb[self.src_dico.word2id[word]]))
-            id2word[i] = word
-            word2id[word] = i
+                id2tgt[i] = word
+                tgt2id[word] = i
+            src_dico = Dictionary(id2src, src2id, self.params.src_lang)
+            tgt_dico = Dictionary(id2tgt, tgt2id, self.params.tgt_lang)
         src_emb = E1.clone()
         tgt_emb = E2.clone()
 
-        #remake dicts
-        src_dico = Dictionary(id2word, word2id, 'site1')
-        tgt_dico = Dictionary(id2word, word2id, 'site2')
+        #reassign dicts
         params.src_dico = src_dico
         params.tgt_dico = tgt_dico
         self.src_dico = src_dico
