@@ -219,10 +219,10 @@ class Evaluator(object):
         """
         Run all evaluations.
         """
-        #self.monolingual_wordsim(to_log)
-        #self.crosslingual_wordsim(to_log)
-        #self.word_translation(to_log)
-        #self.sent_translation(to_log)
+        self.monolingual_wordsim(to_log)
+        self.crosslingual_wordsim(to_log)
+        self.word_translation(to_log)
+        self.sent_translation(to_log)
         self.dist_mean_cosine(to_log)
 
     def global_ranking_eval(self, to_log):
@@ -326,6 +326,7 @@ class Evaluator(object):
         #load word2codes lookup
         word2codes = defaultdict(set)
         word_1s = set()
+        single_codes = set()
         with open('../../data/D_ICD_DIAGNOSES.csv') as f:
             r = csv.reader(f)
             #header
@@ -339,6 +340,7 @@ class Evaluator(object):
                             word2codes[tok].add(cde)
                 if len(desc) == 1 and desc[0].lower() in word2ix:
                     word_1s.add(desc[0].lower())
+                    single_codes.add((desc[0].lower(), cde))
         ranks = []
         rank_1s = []
         for word, codes in word2codes.items():
@@ -356,6 +358,10 @@ class Evaluator(object):
         mr1 = np.mean(rank_1s)
         print(f"mean rank: {mr}")
         print(f"mean one-word description rank: {mr1}")
+        with open('single_word_codes.txt', 'w') as of:
+            w = csv.writer(of, delimiter=' ')
+            for word, cde in single_codes:
+                w.writerow([cde, word])
         return mr, mr1
 
     def eval_dis(self, to_log):
