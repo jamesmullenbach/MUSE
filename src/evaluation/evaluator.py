@@ -298,9 +298,11 @@ class Evaluator(object):
             if len(desc) == 1:
                 rank_1s.append(rank)
         mr = np.mean(ranks)
+        mrstd = np.std(ranks)
         mr1 = np.mean(rank_1s)
-        print(f"mean rank: {mr}")
-        print(f"mean one-word description rank: {mr1}")
+        mr1std = np.std(ranks)
+        print(f"mean rank: {mr} +/- {mrstd}")
+        print(f"mean one-word description rank: {mr1} +/- {mr1std}")
         return mr, mr1
 
     def word_to_codes_retrieval_eval(self, to_log, which_is_codes='src'):
@@ -340,7 +342,8 @@ class Evaluator(object):
                             word2codes[tok].add(cde)
                 if len(desc) == 1 and desc[0].lower() in word2ix:
                     word_1s.add(desc[0].lower())
-                    single_codes.add((desc[0].lower(), cde))
+                    if cde in code2ix:
+                        single_codes.add((desc[0].lower(), cde))
         ranks = []
         rank_1s = []
         for word, codes in word2codes.items():
@@ -355,9 +358,11 @@ class Evaluator(object):
             if word in word_1s:
                 rank_1s.append(mr)
         mr = np.mean(ranks)
+        mrstd = np.std(ranks)
         mr1 = np.mean(rank_1s)
-        print(f"mean rank: {mr}")
-        print(f"mean one-word description rank: {mr1}")
+        mr1std = np.std(rank_1s)
+        print(f"mean rank: {mr} +/- {mrstd}")
+        print(f"mean one-word description rank: {mr1} +/- {mr1std}")
         with open('single_word_codes.txt', 'w') as of:
             w = csv.writer(of, delimiter=' ')
             for word, cde in single_codes:
