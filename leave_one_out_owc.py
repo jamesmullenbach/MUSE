@@ -11,12 +11,15 @@ import argparse
 from collections import OrderedDict
 
 from gensim.models import KeyedVectors
+import numpy as np
 import torch
+import torch.nn as nn
 
 from src.utils import bool_flag, initialize_exp
 from src.models import build_model
 from src.trainer import Trainer
 from src.evaluation import Evaluator
+from src.evaluation.word_translation import load_dictionary
 
 
 VALIDATION_METRIC_SUP = 'precision_at_1-csls_knn_10'
@@ -73,8 +76,10 @@ assert os.path.isfile(params.src_emb)
 assert os.path.isfile(params.tgt_emb)
 assert params.dico_eval == 'default' or os.path.isfile(params.dico_eval)
 assert params.export in ["", "txt", "pth"]
+params.verbose = 0
 
 # build logger / model / trainer / evaluator
+#do all this stuff once to get the word2id's
 logger = initialize_exp(params)
 src_emb, tgt_emb, mapping, _ = build_model(params, False)
 if params.glo_emb:
@@ -87,49 +92,83 @@ evaluator = Evaluator(trainer)
 # load a training dictionary. if a dictionary path is not provided, use a default
 # one ("default") or create one based on identical character strings ("identical_char")
 trainer.load_training_dico(params.dico_train, params.subsample)
-
+eval_dico = load_dictionary(params.dico_eval, trainer.src_dico.word2id, trainer.tgt_dico.word2id)
+dico = trainer.dico.clone()
 
 # define the validation metric
 VALIDATION_METRIC = VALIDATION_METRIC_UNSUP if params.dico_train == 'identical_char' else VALIDATION_METRIC_SUP
 logger.info("Validation metric: %s" % VALIDATION_METRIC)
 
-"""
-Learning loop for Procrustes Iterative Learning
-"""
-for n_iter in range(params.n_refinement + 1):
+cos = torch.nn.CosineSimilarity(dim=1)
 
-    logger.info('Starting iteration %i...' % n_iter)
+ranks = []
+rranks = []
+for d_ix,(code_ix, word_ix) in enumerate(eval_dico):
+    code = trainer.src_dico.id2word[code_ix.item()]
+    word = trainer.tgt_dico.id2word[word_ix.item()]
+    print('Starting leave-one-out iteration %i with (%s, %s)...' % (d_ix, code, word))
 
-    # build a dictionary from aligned embeddings (unless
-    # it is the first iteration and we use the init one)
-    if n_iter > 0 or not hasattr(trainer, 'dico'):
-        trainer.build_dictionary()
+    #copy over full dico and remove current pair
+    trainer.dico = dico.clone()
+    rows = list(range(0,d_ix)) + list(range(d_ix+1, len(dico)))
+    trainer.dico = dico[rows,:]
 
-    # apply the Procrustes solution
-    trainer.procrustes()
+    #reset the mapping, reset best validation
+    mapping = nn.Linear(params.emb_dim, params.emb_dim, bias=False)
+    if getattr(params, 'map_id_init', True):
+        mapping.weight.data.copy_(torch.diag(torch.ones(params.emb_dim)))
+    if params.cuda:
+        mapping.cuda()
+    trainer.mapping = mapping
+    trainer.best_valid_metric = -1e12
 
-    # embeddings evaluation
-    to_log = OrderedDict({'n_iter': n_iter})
-    evaluator.all_eval(to_log)
+    """
+    Learning loop for Procrustes Iterative Learning
+    """
+    for n_iter in range(params.n_refinement + 1):
 
-    # JSON log / save best model / end of epoch
-    logger.info("__log__:%s" % json.dumps(to_log))
-    trainer.save_best(to_log, VALIDATION_METRIC)
-    logger.info('End of iteration %i.\n\n' % n_iter)
+        logger.info('Starting iteration %i...' % n_iter)
 
+        # build a dictionary from aligned embeddings (unless
+        # it is the first iteration and we use the init one)
+        if n_iter > 0 or not hasattr(trainer, 'dico'):
+            trainer.build_dictionary()
 
-# export embeddings
-if params.export:
+        # apply the Procrustes solution
+        trainer.procrustes()
+
+        # embeddings evaluation
+        to_log = OrderedDict({'n_iter': n_iter})
+        evaluator.all_eval(to_log)
+
+        # JSON log / save best model / end of epoch
+        logger.info("__log__:%s" % json.dumps(to_log))
+        trainer.save_best(to_log, VALIDATION_METRIC)
+        logger.info('End of iteration %i.\n\n' % n_iter)
+
+    #get embeddings into gensim
     trainer.reload_best()
-    trainer.export(params.cross_modal)
+    desc_repr = trainer.tgt_emb.weight[trainer.tgt_dico.word2id[word]]
+    code_sims = cos(trainer.mapping(trainer.src_emb.weight), desc_repr.unsqueeze(0)).data.cpu().numpy()
+    print("getting similarity rank of code %s" % code)
+    rank = len(code_sims) - np.where(np.argsort(code_sims) == trainer.src_dico.word2id[code])[0][0]
 
-if params.removed_keys_file and params.glo_emb:
-    # evaluate global ranking after combining the results in export()
-    to_log = OrderedDict({'n_iter': n_iter})
-    evaluator.global_ranking_eval(to_log)
-else:
-    to_log = OrderedDict({'n_iter': n_iter})
-    mr, mr1 = evaluator.desc_to_code_retrieval_eval(to_log)
-    wcmr, wcmr1 = evaluator.word_to_codes_retrieval_eval(to_log)
-    with open('sup_results.log', 'a') as af:
-        af.write('\t'.join([str(params), str(mr), str(mr1), str(wcmr), str(wcmr1)]) + "\n")
+    #print("putting embeddings into gensim")
+    #trainer.export(params.cross_modal)
+    #code_emb = KeyedVectors.load_word2vec_format(os.path.join(params.exp_path, 'vectors-%s.txt' % params.src_lang))
+    #word_emb = KeyedVectors.load_word2vec_format(os.path.join(params.exp_path, 'vectors-%s.txt' % params.tgt_lang))
+    #print("done")
+    #code2ix = {code:ix for ix,code in enumerate(sorted(code_emb.wv.vocab.keys()))}
+    #word2ix = {word:ix for ix,word in enumerate(sorted(word_emb.wv.vocab.keys()))}
+
+    #print("getting description: %s" % word)
+    #desc_repr = word_emb[word]
+    #code_dists = code_emb.distances(desc_repr)
+    #closest = np.argsort(code_dists)
+    #rank = np.where(closest == code2ix[code])[0][0]+1
+
+    ranks.append(rank)
+    rranks.append(1/rank)
+    print("Rank: %d" % rank)
+    print("mean rank so far: %f" % np.mean(ranks))
+    print("mean reciprocal rank so far: %f" % np.mean(rranks))

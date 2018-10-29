@@ -259,17 +259,13 @@ class Evaluator(object):
         #boilerplate variable assignment
         if which_is_codes == 'src':
             code2ix = {code:ix for ix,code in enumerate(sorted(src_emb.wv.vocab.keys()))}
-            ix2code = {ix:code for code,ix in code2ix.items()}
             code_emb = src_emb
             word2ix = {word:ix for ix,word in enumerate(sorted(tgt_emb.wv.vocab.keys()))}
-            ix2word = {ix:word for word,ix in word2ix.items()}
             word_emb = tgt_emb
         else:
             word2ix = {word:ix for ix,word in enumerate(sorted(src_emb.wv.vocab.keys()))}
-            ix2word = {ix:word for word,ix in word2ix.items()}
             word_emb = src_emb
             code2ix = {code:ix for ix,code in enumerate(sorted(tgt_emb.wv.vocab.keys()))}
-            ix2code = {ix:code for code,ix in code2ix.items()}
             code_emb = tgt_emb
 
         #load code2desc lookup
@@ -293,16 +289,26 @@ class Evaluator(object):
             #get similarity of each code to the description
             code_dists = code_emb.distances(desc_repr)
             closest = np.argsort(code_dists)
-            rank = np.where(closest == code2ix[cde])[0][0]
+            rank = np.where(closest == code2ix[cde])[0][0]+1
             ranks.append(rank)
             if len(desc) == 1:
                 rank_1s.append(rank)
+        rranks = [1/rank for rank in ranks]
+        rrank_1s = [1/rank for rank in rank_1s]
+
         mr = np.mean(ranks)
         mrstd = np.std(ranks)
+        mrr = np.mean(rranks)
+        mrrstd = np.std(rranks)
+
         mr1 = np.mean(rank_1s)
-        mr1std = np.std(ranks)
+        mr1std = np.std(rank_1s)
+        mrr1 = np.mean(rrank_1s)
+        mrr1std = np.std(rrank_1s)
         print(f"mean rank: {mr} +/- {mrstd}")
         print(f"mean one-word description rank: {mr1} +/- {mr1std}")
+        print(f"mrr: {mrr} +/- {mrrstd}")
+        print(f"one-word description mrr: {mrr1} +/- {mrr1std}")
         return mr, mr1
 
     def word_to_codes_retrieval_eval(self, to_log, which_is_codes='src'):
@@ -312,17 +318,13 @@ class Evaluator(object):
         #boilerplate variable assignment
         if which_is_codes == 'src':
             code2ix = {code:ix for ix,code in enumerate(sorted(src_emb.wv.vocab.keys()))}
-            ix2code = {ix:code for code,ix in code2ix.items()}
             code_emb = src_emb
             word2ix = {word:ix for ix,word in enumerate(sorted(tgt_emb.wv.vocab.keys()))}
-            ix2word = {ix:word for word,ix in word2ix.items()}
             word_emb = tgt_emb
         else:
             word2ix = {word:ix for ix,word in enumerate(sorted(src_emb.wv.vocab.keys()))}
-            ix2word = {ix:word for word,ix in word2ix.items()}
             word_emb = src_emb
             code2ix = {code:ix for ix,code in enumerate(sorted(tgt_emb.wv.vocab.keys()))}
-            ix2code = {ix:code for code,ix in code2ix.items()}
             code_emb = tgt_emb
 
         #load word2codes lookup
@@ -337,6 +339,7 @@ class Evaluator(object):
                 cde = 'd_' + row[1]
                 desc = word_tokenize(row[-1])
                 for tok in desc:
+                    tok = tok.lower()
                     if not tok.isnumeric():
                         if tok in word2ix and cde in code2ix:
                             word2codes[tok].add(cde)
@@ -345,28 +348,49 @@ class Evaluator(object):
                     if cde in code2ix:
                         single_codes.add((desc[0].lower(), cde))
         ranks = []
+        rranks = []
         rank_1s = []
+        rrank_1s = []
         for word, codes in word2codes.items():
             code_dists = code_emb.distances(word_emb[word])
             closest = np.argsort(code_dists)
             wranks = []
+            wrranks = []
             for cde in codes:
-                rank = np.where(closest == code2ix[cde])[0][0]
+                rank = np.where(closest == code2ix[cde])[0][0]+1
                 wranks.append(rank)
+                wrranks.append(1/rank)
             mr = np.mean(wranks)
+            mrr = np.mean(wrranks)
             ranks.append(mr)
+            rranks.append(mrr)
             if word in word_1s:
                 rank_1s.append(mr)
+                rrank_1s.append(mrr)
+
         mr = np.mean(ranks)
         mrstd = np.std(ranks)
+        mrr = np.mean(rranks)
+        mrrstd = np.std(rranks)
+
         mr1 = np.mean(rank_1s)
         mr1std = np.std(rank_1s)
+        mrr1 = np.mean(rrank_1s)
+        mrr1std = np.std(rrank_1s)
         print(f"mean rank: {mr} +/- {mrstd}")
         print(f"mean one-word description rank: {mr1} +/- {mr1std}")
+        print(f"mrr: {mrr} +/- {mrrstd}")
+        print(f"one-word description mrr: {mrr1} +/- {mrr1std}")
         with open('single_word_codes.txt', 'w') as of:
             w = csv.writer(of, delimiter=' ')
             for word, cde in single_codes:
                 w.writerow([cde, word])
+        with open('single_word_codes2.txt', 'w') as of:
+            w = csv.writer(of, delimiter=' ')
+            for word, codes in word2codes.items():
+                codes = list(codes)
+                if len(codes) == 1:
+                    w.writerow([codes[0], word])
         return mr, mr1
 
     def eval_dis(self, to_log):

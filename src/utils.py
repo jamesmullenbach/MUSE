@@ -238,7 +238,17 @@ def get_exp_path(params):
         subprocess.Popen("mkdir %s" % exp_folder, shell=True).wait()
     if params.exp_id == '':
         if hasattr(params, 'subsample'):
-            name = f'sup_{params.src_lang}_{params.tgt_lang}_emb{params.emb_dim}_iters{params.n_refinement}_sub{int(100*params.subsample)}'
+            pref = 'loo' if hasattr(params, 'leave_one_out') else 'sup'
+            if params.cross_modal:
+                if params.dico_train == 'single_word_codes.txt':
+                    sup_type = 'owc' 
+                elif params.dico_train == 'single_word_codes2.txt':
+                    sup_type = 'uwc'
+                else:
+                    sup_type = 'unk'
+                name = f'{pref}_{params.src_lang}_{params.tgt_lang}_emb{params.emb_dim}_iters{params.n_refinement}_{sup_type}'
+            else:
+                name = f'{loo}_{params.src_lang}_{params.tgt_lang}_emb{params.emb_dim}_iters{params.n_refinement}_sub{int(100*params.subsample)}'
         else:
             name = f'unsup_{params.src_lang}_{params.tgt_lang}_emb{params.emb_dim}_train{params.n_epochs}_iters{params.n_refinement}'
         exp_path = os.path.join(exp_folder, name)
@@ -264,8 +274,7 @@ def read_txt_embeddings(params, source, full_vocab):
     """
     Reload pretrained embeddings from a text file.
     """
-    word2id = {}
-    vectors = []
+    word2vec = {}
 
     # load pretrained embeddings
     lang = params.src_lang if source else params.tgt_lang
@@ -284,7 +293,7 @@ def read_txt_embeddings(params, source, full_vocab):
                 vect = np.fromstring(vect, sep=' ')
                 if np.linalg.norm(vect) == 0:  # avoid to have null embeddings
                     vect[0] = 0.01
-                if word in word2id:
+                if word in word2vec:
                     if full_vocab:
                         logger.warning("Word '%s' found twice in %s embedding file"
                                        % (word, 'source' if source else 'target'))
@@ -294,16 +303,16 @@ def read_txt_embeddings(params, source, full_vocab):
                                        % (vect.shape[0], 'source' if source else 'target', word, i))
                         continue
                     assert vect.shape == (_emb_dim_file,), i
-                    word2id[word] = len(word2id)
-                    vectors.append(vect[None])
-            if params.max_vocab > 0 and len(word2id) >= params.max_vocab and not full_vocab:
+                    word2vec[word] = vect[None]
+            if params.max_vocab > 0 and len(word2vec) >= params.max_vocab and not full_vocab:
                 break
 
-    assert len(word2id) == len(vectors)
-    logger.info("Loaded %i pre-trained word embeddings." % len(vectors))
+    logger.info("Loaded %i pre-trained word embeddings." % len(word2vec))
 
     # compute new vocabulary / embeddings
+    word2id = {w: i for i, w in enumerate(sorted(word2vec.keys()))}
     id2word = {v: k for k, v in word2id.items()}
+    vectors = [vec for w, vec in sorted(word2vec.items(), key=lambda x: x[0])]
     dico = Dictionary(id2word, word2id, lang)
     embeddings = np.concatenate(vectors, 0)
     embeddings = torch.from_numpy(embeddings).float()

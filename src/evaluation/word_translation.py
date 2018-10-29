@@ -52,34 +52,38 @@ def load_identical_char_dico(word2id1, word2id2, subsample=1):
     return dico, (id2word1, word2id1), (id2word2, word2id2)
 
 
-def load_dictionary(path, word2id1, word2id2):
+def load_dictionary(dico_train, word2id1, word2id2):
     """
     Return a torch tensor of size (n, 2) where n is the size of the
     loader dictionary, and sort it by source word frequency.
     """
-    assert os.path.isfile(path)
+    if type(dico_train) == str:
+        assert os.path.isfile(dico_train)
+        path = dico_train
 
-    pairs = []
-    not_found = 0
-    not_found1 = 0
-    not_found2 = 0
+        pairs = []
+        not_found = 0
+        not_found1 = 0
+        not_found2 = 0
 
-    with io.open(path, 'r', encoding='utf-8') as f:
-        for _, line in enumerate(f):
-            #assert line == line.lower()
-            word1, word2 = line.rstrip().split()
-            if word1 in word2id1 and word2 in word2id2:
-                pairs.append((word1, word2))
-            else:
-                not_found += 1
-                not_found1 += int(word1 not in word2id1)
-                not_found2 += int(word2 not in word2id2)
+        with io.open(path, 'r', encoding='utf-8') as f:
+            for _, line in enumerate(f):
+                #assert line == line.lower()
+                word1, word2 = line.rstrip().split()
+                if word1 in word2id1 and word2 in word2id2:
+                    pairs.append((word1, word2))
+                else:
+                    not_found += 1
+                    not_found1 += int(word1 not in word2id1)
+                    not_found2 += int(word2 not in word2id2)
 
-    logger.info("Found %i pairs of words in the dictionary (%i unique). "
-                "%i other pairs contained at least one unknown word "
-                "(%i in lang1, %i in lang2)"
-                % (len(pairs), len(set([x for x, _ in pairs])),
-                   not_found, not_found1, not_found2))
+        logger.info("Found %i pairs of words in the dictionary (%i unique). "
+                    "%i other pairs contained at least one unknown word "
+                    "(%i in lang1, %i in lang2)"
+                    % (len(pairs), len(set([x for x, _ in pairs])),
+                       not_found, not_found1, not_found2))
+    elif type(dico_train) == dict:
+        pairs = [(word1, word2) for word1, word2 in dico_train.items()]
 
     # sort the dictionary by source word frequencies
     pairs = sorted(pairs, key=lambda x: word2id1[x[0]])

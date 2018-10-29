@@ -179,12 +179,15 @@ class Trainer(object):
         Find the best orthogonal matrix mapping using the Orthogonal Procrustes problem
         https://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem
         """
-        A = self.src_emb.weight.data[self.dico[:, 0]]
-        B = self.tgt_emb.weight.data[self.dico[:, 1]]
-        W = self.mapping.weight.data
-        M = B.transpose(0, 1).mm(A).cpu().numpy()
-        U, S, V_t = scipy.linalg.svd(M, full_matrices=True)
-        W.copy_(torch.from_numpy(U.dot(V_t)).type_as(W))
+        try:
+            A = self.src_emb.weight.data[self.dico[:, 0]]
+            B = self.tgt_emb.weight.data[self.dico[:, 1]]
+            W = self.mapping.weight.data
+            M = B.transpose(0, 1).mm(A).cpu().numpy()
+            U, S, V_t = scipy.linalg.svd(M, full_matrices=True)
+            W.copy_(torch.from_numpy(U.dot(V_t)).type_as(W))
+        except:
+            import pdb; pdb.set_trace()
 
     def orthogonalize(self):
         """
@@ -297,11 +300,11 @@ class Trainer(object):
             E2 = Variable(torch.zeros((len(self.tgt_dico.word2id)), src_emb.shape[1]))
             id2src, src2id = {}, {}
             id2tgt, tgt2id = {}, {}
-            for i, (word, ix) in tqdm(enumerate(sorted(self.src_dico.word2id.items()))):
+            for i, (word, ix) in tqdm(enumerate(sorted(self.src_dico.word2id.items(), key=lambda x: x[0]))):
                 E1[i] = self.mapping(Variable(src_emb[self.src_dico.word2id[word]]))
                 id2src[i] = word
                 src2id[word] = i
-            for i, (word, ix) in tqdm(enumerate(sorted(self.tgt_dico.word2id.items()))):
+            for i, (word, ix) in tqdm(enumerate(sorted(self.tgt_dico.word2id.items(), key=lambda x: x[0]))):
                 E2[i] = tgt_emb[self.tgt_dico.word2id[word]]
                 id2tgt[i] = word
                 tgt2id[word] = i
@@ -317,8 +320,11 @@ class Trainer(object):
         self.tgt_dico = tgt_dico
         self.params.src_dico = src_dico
         self.params.tgt_dico = tgt_dico
-        self.src_emb = src_emb
-        self.tgt_emb = tgt_emb
+        self.src_emb = torch.nn.Embedding.from_pretrained(src_emb)
+        self.tgt_emb = torch.nn.Embedding.from_pretrained(tgt_emb)
+        if params.cuda:
+            self.src_emb.cuda()
+            self.tgt_emb.cuda()
 
         # write embeddings to the disk
         export_embeddings(src_emb, tgt_emb, params)
