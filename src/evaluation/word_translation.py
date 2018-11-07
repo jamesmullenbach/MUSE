@@ -52,7 +52,7 @@ def load_identical_char_dico(word2id1, word2id2, subsample=1):
     return dico, (id2word1, word2id1), (id2word2, word2id2)
 
 
-def load_dictionary(dico_train, word2id1, word2id2):
+def load_dictionary(dico_train, word2id1, word2id2, exclude=''):
     """
     Return a torch tensor of size (n, 2) where n is the size of the
     loader dictionary, and sort it by source word frequency.
@@ -70,7 +70,7 @@ def load_dictionary(dico_train, word2id1, word2id2):
             for _, line in enumerate(f):
                 #assert line == line.lower()
                 word1, word2 = line.rstrip().split()
-                if word1 in word2id1 and word2 in word2id2:
+                if word1 in word2id1 and word2 in word2id2 and word1 != exclude and word2 != exclude:
                     pairs.append((word1, word2))
                 else:
                     not_found += 1
@@ -95,7 +95,7 @@ def load_dictionary(dico_train, word2id1, word2id2):
     return dico
 
 
-def get_word_translation_accuracy(lang1, word2id1, emb1, lang2, word2id2, emb2, method, dico_eval):
+def get_word_translation_accuracy(lang1, word2id1, emb1, lang2, word2id2, emb2, method, dico_eval, exclude):
     """
     Given source and target word embeddings, and a dictionary,
     evaluate the translation accuracy using the precision@k.
@@ -104,7 +104,7 @@ def get_word_translation_accuracy(lang1, word2id1, emb1, lang2, word2id2, emb2, 
         path = os.path.join(DIC_EVAL_PATH, '%s-%s.5000-6500.txt' % (lang1, lang2))
     else:
         path = dico_eval
-    dico = load_dictionary(path, word2id1, word2id2)
+    dico = load_dictionary(path, word2id1, word2id2, exclude)
     dico = dico.cuda() if emb1.is_cuda else dico
 
     assert dico[:, 0].max() < emb1.size(0)

@@ -111,7 +111,7 @@ class Evaluator(object):
         to_log['ws_crosslingual_scores'] = ws_crosslingual_scores
         to_log.update({'src_tgt_' + k: v for k, v in src_tgt_ws_scores.items()})
 
-    def word_translation(self, to_log):
+    def word_translation(self, to_log, exclude):
         """
         Evaluation on word translation.
         """
@@ -124,7 +124,8 @@ class Evaluator(object):
                 self.src_dico.lang, self.src_dico.word2id, src_emb,
                 self.tgt_dico.lang, self.tgt_dico.word2id, tgt_emb,
                 method=method,
-                dico_eval=self.params.dico_eval
+                dico_eval=self.params.dico_eval,
+                exclude=exclude
             )
             to_log.update([('%s-%s' % (k, method), v) for k, v in results])
 
@@ -215,13 +216,13 @@ class Evaluator(object):
                         % (dico_method, _params.dico_build, dico_max_size, mean_cosine))
             to_log['mean_cosine-%s-%s-%i' % (dico_method, _params.dico_build, dico_max_size)] = mean_cosine
 
-    def all_eval(self, to_log):
+    def all_eval(self, to_log, exclude=''):
         """
         Run all evaluations.
         """
         self.monolingual_wordsim(to_log)
         self.crosslingual_wordsim(to_log)
-        self.word_translation(to_log)
+        self.word_translation(to_log, exclude)
         self.sent_translation(to_log)
         self.dist_mean_cosine(to_log)
 

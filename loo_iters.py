@@ -5,6 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 #
 
+import csv
 import os
 import json
 import argparse
@@ -101,10 +102,12 @@ logger.info("Validation metric: %s" % params.val_metric)
 
 cos = torch.nn.CosineSimilarity(dim=1)
 
-ranks = []
-rranks = []
+ranks = [[] for _ in range(params.n_refinement + 1)]
+rranks = [[] for _ in range(params.n_refinement + 1)]
 rank_us = []
 rrank_us = []
+branks = []
+brranks = []
 for d_ix,(code_ix, word_ix) in enumerate(eval_dico):
     code = trainer.src_dico.id2word[code_ix.item()]
     word = trainer.tgt_dico.id2word[word_ix.item()]
@@ -143,14 +146,21 @@ for d_ix,(code_ix, word_ix) in enumerate(eval_dico):
 
         # embeddings evaluation
         to_log = OrderedDict({'n_iter': n_iter})
-        evaluator.all_eval(to_log, exclude=code)
+        evaluator.all_eval(to_log, code)
 
         # JSON log / save best model / end of epoch
         logger.info("__log__:%s" % json.dumps(to_log))
         trainer.save_best(to_log, params.val_metric)
         logger.info('End of iteration %i.\n\n' % n_iter)
 
-    #get rank of left-out code
+        #get rank of left-out code
+        desc_repr = trainer.tgt_emb.weight[trainer.tgt_dico.word2id[word]]
+        code_sims = cos(trainer.mapping(trainer.src_emb.weight), desc_repr.unsqueeze(0)).data.cpu().numpy()
+        rank = len(code_sims) - np.where(np.argsort(code_sims) == trainer.src_dico.word2id[code])[0][0]
+        ranks[n_iter].append(rank)
+        rranks[n_iter].append(1/rank)
+
+    #get *best* and *unaligned* rank of left-out code
     trainer.reload_best()
     desc_repr = trainer.tgt_emb.weight[trainer.tgt_dico.word2id[word]]
     code_sims = cos(trainer.mapping(trainer.src_emb.weight), desc_repr.unsqueeze(0)).data.cpu().numpy()
@@ -160,12 +170,18 @@ for d_ix,(code_ix, word_ix) in enumerate(eval_dico):
     code_sims_unaligned = cos(trainer.src_emb.weight, desc_repr.unsqueeze(0)).data.cpu().numpy()
     rank_u = len(code_sims) - np.where(np.argsort(code_sims_unaligned) == trainer.src_dico.word2id[code])[0][0]
 
-    ranks.append(rank)
-    rranks.append(1/rank)
+    branks.append(rank)
+    brranks.append(1/rank)
     rank_us.append(rank_u)
     rrank_us.append(1/rank_u)
     print("Rank: %d" % rank)
-    print("mean rank so far: %f" % np.mean(ranks))
-    print("mean reciprocal rank so far: %f" % np.mean(rranks))
+    print("mean rank so far: %f" % np.mean(branks))
+    print("mean reciprocal rank so far: %f" % np.mean(brranks))
     print("mean unaligned rank so far: %f" % np.mean(rank_us))
     print("mean reciprocal unaligned rank so far: %f" % np.mean(rrank_us))
+
+with open('iter_results.csv', 'w') as of:
+    w = csv.writer(of)
+    w.writerow(['iters', 'MR', 'MRR'])
+    for it in len(ranks):
+        of.writerow([it_res+1, np.mean(ranks[it]), np.mean(rranks[it])])
