@@ -19,10 +19,6 @@ from src.trainer import Trainer
 from src.evaluation import Evaluator
 
 
-VALIDATION_METRIC_SUP = 'precision_at_1-csls_knn_10'
-VALIDATION_METRIC_UNSUP = 'mean_cosine-csls_knn_10-S2T-10000'
-
-
 # main
 parser = argparse.ArgumentParser(description='Supervised training')
 parser.add_argument("--seed", type=int, default=-1, help="Initialization seed")
@@ -40,11 +36,13 @@ parser.add_argument("--emb_dim", type=int, default=300, help="Embedding dimensio
 parser.add_argument("--max_vocab", type=int, default=200000, help="Maximum vocabulary size (-1 to disable)")
 # training refinement
 parser.add_argument("--n_refinement", type=int, default=5, help="Number of refinement iterations (0 to disable the refinement procedure)")
+# validation
+parser.add_argument("--val_metric", type=str, default="precision_at_1-nn", help="validation metric to choose the best mapping e.g. precision_at_1-csls_knn_10")
 # dictionary creation parameters (for refinement)
-parser.add_argument("--dico_train", type=str, default="identical_char", help="Path to training dictionary (default: use identical character strings)")
+parser.add_argument("--dico_train", type=str, help="Path to training dictionary (default: use identical character strings)")
 parser.add_argument("--dico_eval", type=str, default="default", help="Path to evaluation dictionary")
-parser.add_argument("--dico_method", type=str, default='csls_knn_10', help="Method used for dictionary generation (nn/invsm_beta_30/csls_knn_10)")
-parser.add_argument("--dico_build", type=str, default='S2T&T2S', help="S2T,T2S,S2T|T2S,S2T&T2S")
+parser.add_argument("--dico_method", type=str, default='csls_knn_10', help="Similarity method used for dictionary generation (nn/invsm_beta_30/csls_knn_10)")
+parser.add_argument("--dico_build", type=str, default='S2T&T2S', help="S2T,T2S,S2T|T2S,S2T&T2S. default=S2T&T2S (mutual nearest neighbors)")
 parser.add_argument("--dico_threshold", type=float, default=0, help="Threshold confidence for dictionary generation")
 parser.add_argument("--dico_max_rank", type=int, default=10000, help="Maximum dictionary words rank (0 to disable)")
 parser.add_argument("--dico_min_size", type=int, default=0, help="Minimum generated dictionary size (0 to disable)")
@@ -90,8 +88,7 @@ trainer.load_training_dico(params.dico_train, params.subsample)
 
 
 # define the validation metric
-VALIDATION_METRIC = VALIDATION_METRIC_UNSUP if params.dico_train == 'identical_char' else VALIDATION_METRIC_SUP
-logger.info("Validation metric: %s" % VALIDATION_METRIC)
+logger.info("Validation metric: %s" % args.val_metric)
 
 """
 Learning loop for Procrustes Iterative Learning
@@ -114,7 +111,7 @@ for n_iter in range(params.n_refinement + 1):
 
     # JSON log / save best model / end of epoch
     logger.info("__log__:%s" % json.dumps(to_log))
-    trainer.save_best(to_log, VALIDATION_METRIC)
+    trainer.save_best(to_log, args.val_metric)
     logger.info('End of iteration %i.\n\n' % n_iter)
 
 

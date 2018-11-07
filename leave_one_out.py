@@ -153,7 +153,7 @@ for d_ix,(code_ix, word_ix) in enumerate(eval_dico):
         trainer.save_best(to_log, VALIDATION_METRIC)
         logger.info('End of iteration %i.\n\n' % n_iter)
 
-    #get embeddings into gensim
+    #get rank of left-out code
     trainer.reload_best()
     desc_repr = trainer.tgt_emb.weight[trainer.tgt_dico.word2id[word]]
     code_sims = cos(trainer.mapping(trainer.src_emb.weight), desc_repr.unsqueeze(0)).data.cpu().numpy()
@@ -162,20 +162,6 @@ for d_ix,(code_ix, word_ix) in enumerate(eval_dico):
 
     code_sims_unaligned = cos(trainer.src_emb.weight, desc_repr.unsqueeze(0)).data.cpu().numpy()
     rank_u = len(code_sims) - np.where(np.argsort(code_sims_unaligned) == trainer.src_dico.word2id[code])[0][0]
-
-    #print("putting embeddings into gensim")
-    #trainer.export(params.cross_modal)
-    #code_emb = KeyedVectors.load_word2vec_format(os.path.join(params.exp_path, 'vectors-%s.txt' % params.src_lang))
-    #word_emb = KeyedVectors.load_word2vec_format(os.path.join(params.exp_path, 'vectors-%s.txt' % params.tgt_lang))
-    #print("done")
-    #code2ix = {code:ix for ix,code in enumerate(sorted(code_emb.wv.vocab.keys()))}
-    #word2ix = {word:ix for ix,word in enumerate(sorted(word_emb.wv.vocab.keys()))}
-
-    #print("getting description: %s" % word)
-    #desc_repr = word_emb[word]
-    #code_dists = code_emb.distances(desc_repr)
-    #closest = np.argsort(code_dists)
-    #rank = np.where(closest == code2ix[code])[0][0]+1
 
     ranks.append(rank)
     rranks.append(1/rank)
