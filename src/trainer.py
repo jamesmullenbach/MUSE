@@ -5,8 +5,11 @@
 # LICENSE file in the root directory of this source tree.
 #
 
+import csv
 import os
 from logging import getLogger
+from collections import defaultdict
+from nltk.tokenize import word_tokenize
 import numpy as np
 import scipy
 import scipy.linalg
@@ -135,7 +138,7 @@ class Trainer(object):
 
         return 2 * self.params.batch_size
 
-    def load_training_dico(self, dico_train, subsample):
+    def load_training_dico(self, dico_train, subsample, dico_eval=None):
         """
         Load training dictionary.
         """
@@ -156,6 +159,36 @@ class Trainer(object):
                 os.path.join(DIC_EVAL_PATH, filename),
                 word2id1, word2id2
             )
+        # construct dictionary using descriptions
+        elif dico_train == "uwc":
+            word2codes = defaultdict(set)
+            pairs = []
+            with open('../../data/D_ICD_DIAGNOSES.csv') as f:
+                r = csv.reader(f)
+                #header
+                next(r)
+                for row in r:
+                    cde = 'd_' + row[1]
+                    desc = word_tokenize(row[-1])
+                    for tok in desc:
+                        tok = tok.lower()
+                        if not tok.isnumeric():
+                            if tok in word2id2 and cde in word2id1:
+                                word2codes[tok].add(cde)
+            for word, codes in word2codes.items():
+                if len(codes) == 1:
+                    pairs.append((list(codes)[0], word))
+            pairs = sorted(pairs, key=lambda x: word2id1[x[0]])
+            if dico_eval:
+                _, eval_pairs = load_dictionary(dico_eval, word2id1, word2id2, return_pairs=True)
+                eval_pairs = set(eval_pairs)
+                #filter out validation pairs
+                pairs = [pair for pair in pairs if pair not in eval_pairs]
+            dico = torch.LongTensor(len(pairs), 2)
+            for i, (word1, word2) in enumerate(pairs):
+                dico[i, 0] = word2id1[word1]
+                dico[i, 1] = word2id2[word2]
+            self.dico = dico
         # dictionary provided by the user
         else:
             self.dico = load_dictionary(dico_train, word2id1, word2id2)
@@ -164,30 +197,39 @@ class Trainer(object):
         if self.params.cuda:
             self.dico = self.dico.cuda()
 
+        self.dico_pairs = [(self.src_dico.id2word[i.item()], self.tgt_dico.id2word[j.item()]) for i, j in self.dico]
+
     def build_dictionary(self):
         """
-        Build a dictionary from aligned embeddings.
+        Build a dictionary from aligned embeddings, *adding* to existing dictionary
         """
         src_emb = self.mapping(self.src_emb.weight).data
         tgt_emb = self.tgt_emb.weight.data
         src_emb = src_emb / src_emb.norm(2, 1, keepdim=True).expand_as(src_emb)
         tgt_emb = tgt_emb / tgt_emb.norm(2, 1, keepdim=True).expand_as(tgt_emb)
-        self.dico = build_dictionary(src_emb, tgt_emb, self.params)
+        new_dico = build_dictionary(src_emb, tgt_emb, self.params)
+        new_dico_pairs = [(self.src_dico.id2word[i.item()], self.tgt_dico.id2word[j.item()]) for i, j in new_dico]
+        for pair in new_dico_pairs:
+            if pair not in self.dico_pairs:
+                self.dico_pairs.append(pair)
+        self.dico_pairs = sorted(self.dico_pairs, key=lambda x: self.src_dico.word2id[x[0]])
+        self.dico = torch.LongTensor(len(self.dico_pairs), 2)
+        for i, (word1, word2) in enumerate(self.dico_pairs):
+            self.dico[i, 0] = self.src_dico.word2id[word1]
+            self.dico[i, 1] = self.tgt_dico.word2id[word2]
+        logger.info('New train dictionary of %i pairs.' % self.dico.size(0))
 
     def procrustes(self):
         """
         Find the best orthogonal matrix mapping using the Orthogonal Procrustes problem
         https://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem
         """
-        try:
-            A = self.src_emb.weight.data[self.dico[:, 0]]
-            B = self.tgt_emb.weight.data[self.dico[:, 1]]
-            W = self.mapping.weight.data
-            M = B.transpose(0, 1).mm(A).cpu().numpy()
-            U, S, V_t = scipy.linalg.svd(M, full_matrices=True)
-            W.copy_(torch.from_numpy(U.dot(V_t)).type_as(W))
-        except:
-            import pdb; pdb.set_trace()
+        A = self.src_emb.weight.data[self.dico[:, 0]]
+        B = self.tgt_emb.weight.data[self.dico[:, 1]]
+        W = self.mapping.weight.data
+        M = B.transpose(0, 1).mm(A).cpu().numpy()
+        U, S, V_t = scipy.linalg.svd(M, full_matrices=True)
+        W.copy_(torch.from_numpy(U.dot(V_t)).type_as(W))
 
     def orthogonalize(self):
         """

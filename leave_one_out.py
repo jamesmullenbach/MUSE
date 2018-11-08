@@ -47,7 +47,7 @@ parser.add_argument("--dico_eval", type=str, default="default", help="Path to ev
 parser.add_argument("--dico_method", type=str, default='csls_knn_10', help="Method used for dictionary generation (nn/invsm_beta_30/csls_knn_10)")
 parser.add_argument("--dico_build", type=str, default='S2T&T2S', help="S2T,T2S,S2T|T2S,S2T&T2S")
 parser.add_argument("--dico_threshold", type=float, default=0, help="Threshold confidence for dictionary generation")
-parser.add_argument("--dico_max_rank", type=int, default=10000, help="Maximum dictionary words rank (0 to disable)")
+parser.add_argument("--dico_max_rank", type=int, default=0, help="Maximum dictionary words rank (0 to disable)")
 parser.add_argument("--dico_min_size", type=int, default=0, help="Minimum generated dictionary size (0 to disable)")
 parser.add_argument("--dico_max_size", type=int, default=0, help="Maximum generated dictionary size (0 to disable)")
 parser.add_argument("--subsample", type=float, default=1, help="Fraction of matching pairs to sub-sample to simulate vocabulary mismatch (default 1 = no subsample)")
@@ -68,7 +68,7 @@ params = parser.parse_args()
 assert not params.cuda or torch.cuda.is_available()
 assert params.dico_train in ["identical_char", "default"] or os.path.isfile(params.dico_train)
 assert params.dico_build in ["S2T", "T2S", "S2T|T2S", "S2T&T2S"]
-assert params.dico_max_size == 0 or params.dico_max_size < params.dico_max_rank
+assert params.dico_max_size == 0 or (params.dico_max_size < params.dico_max_rank or params.dico_max_rank == 0)
 assert params.dico_max_size == 0 or params.dico_max_size > params.dico_min_size
 assert os.path.isfile(params.src_emb)
 assert os.path.isfile(params.tgt_emb)

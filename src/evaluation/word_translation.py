@@ -52,7 +52,7 @@ def load_identical_char_dico(word2id1, word2id2, subsample=1):
     return dico, (id2word1, word2id1), (id2word2, word2id2)
 
 
-def load_dictionary(dico_train, word2id1, word2id2, exclude=''):
+def load_dictionary(dico_train, word2id1, word2id2, exclude='', return_pairs=False):
     """
     Return a torch tensor of size (n, 2) where n is the size of the
     loader dictionary, and sort it by source word frequency.
@@ -92,7 +92,10 @@ def load_dictionary(dico_train, word2id1, word2id2, exclude=''):
         dico[i, 0] = word2id1[word1]
         dico[i, 1] = word2id2[word2]
 
-    return dico
+    if not return_pairs:
+        return dico
+    else:
+        return dico, pairs
 
 
 def get_word_translation_accuracy(lang1, word2id1, emb1, lang2, word2id2, emb2, method, dico_eval, exclude):
