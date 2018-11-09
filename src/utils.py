@@ -270,15 +270,20 @@ def clip_parameters(model, clip):
             x.data.clamp_(-clip, clip)
 
 
-def read_txt_embeddings(params, source, full_vocab):
+def read_txt_embeddings(params, mode, full_vocab):
     """
     Reload pretrained embeddings from a text file.
     """
     word2vec = {}
 
     # load pretrained embeddings
-    lang = params.src_lang if source else params.tgt_lang
-    emb_path = params.src_emb if source else params.tgt_emb
+    lang = params.src_lang if mode == 'src' else params.tgt_lang
+    if mode == 'src':
+        emb_path = params.src_emb
+    elif mode == 'tgt':
+        emb_path = params.tgt_emb
+    elif mode == 'eval':
+        emb_path = params.eval_emb
     _emb_dim_file = params.emb_dim
     with io.open(emb_path, 'r', encoding='utf-8', newline='\n', errors='ignore') as f:
         for i, line in enumerate(f):
@@ -296,18 +301,18 @@ def read_txt_embeddings(params, source, full_vocab):
                 if word in word2vec:
                     if full_vocab:
                         logger.warning("Word '%s' found twice in %s embedding file"
-                                       % (word, 'source' if source else 'target'))
+                                       % (word, 'source' if mode == 'src' else 'target'))
                 else:
                     if not vect.shape == (_emb_dim_file,):
                         logger.warning("Invalid dimension (%i) for %s word '%s' in line %i."
-                                       % (vect.shape[0], 'source' if source else 'target', word, i))
+                                       % (vect.shape[0], 'source' if mode == 'src' else 'target', word, i))
                         continue
                     assert vect.shape == (_emb_dim_file,), i
                     word2vec[word] = vect[None]
             if params.max_vocab > 0 and len(word2vec) >= params.max_vocab and not full_vocab:
                 break
 
-    logger.info("Loaded %i pre-trained word embeddings." % len(word2vec))
+    logger.info("Loaded %i pre-trained %s embeddings." % (len(word2vec), lang))
 
     # compute new vocabulary / embeddings
     word2id = {w: i for i, w in enumerate(sorted(word2vec.keys()))}
@@ -392,7 +397,7 @@ def load_bin_embeddings(params, source, full_vocab):
     return dico, embeddings
 
 
-def load_embeddings(params, source, full_vocab=False):
+def load_embeddings(params, mode, full_vocab=False):
     """
     Reload pretrained embeddings.
     - `full_vocab == False` means that we load the `params.max_vocab` most frequent words.
@@ -404,14 +409,19 @@ def load_embeddings(params, source, full_vocab=False):
     - `full_vocab == True` means that we load the entire embedding text file,
       before we export the embeddings at the end of the experiment.
     """
-    assert type(source) is bool and type(full_vocab) is bool
-    emb_path = params.src_emb if source else params.tgt_emb
+    assert type(full_vocab) is bool
+    if mode == 'src':
+        emb_path = params.src_emb
+    elif mode == 'tgt':
+        emb_path = params.tgt_emb
+    elif mode == 'eval':
+        emb_path = params.eval_emb
     if emb_path.endswith('.pth'):
-        return load_pth_embeddings(params, source, full_vocab)
+        return load_pth_embeddings(params, mode, full_vocab)
     if emb_path.endswith('.bin'):
-        return load_bin_embeddings(params, source, full_vocab)
+        return load_bin_embeddings(params, mode, full_vocab)
     else:
-        return read_txt_embeddings(params, source, full_vocab)
+        return read_txt_embeddings(params, mode, full_vocab)
 
 
 def normalize_embeddings(emb, types, mean=None):

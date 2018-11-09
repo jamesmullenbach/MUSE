@@ -20,11 +20,11 @@ DIC_EVAL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '
 logger = getLogger()
 
 
-def load_identical_char_dico(word2id1, word2id2, subsample=1):
+def load_identical_char_dico(word2id1, word2id2, subsample=1, suffix=''):
     """
     Build a dictionary of identical character strings.
     """
-    pairs = [(w1, w1) for w1 in word2id1.keys() if w1 in word2id2]
+    pairs = [(w1, w1 + suffix) for w1 in word2id1.keys() if (w1 + suffix) in word2id2]
     if len(pairs) == 0:
         raise Exception("No identical character strings were found. "
                         "Please specify a dictionary.")
@@ -69,7 +69,7 @@ def load_dictionary(dico_train, word2id1, word2id2, exclude='', return_pairs=Fal
         with io.open(path, 'r', encoding='utf-8') as f:
             for _, line in enumerate(f):
                 #assert line == line.lower()
-                word1, word2 = line.rstrip().split()
+                word1, word2 = line.rstrip().split()[:2]
                 if word1 in word2id1 and word2 in word2id2 and word1 != exclude and word2 != exclude:
                     pairs.append((word1, word2))
                 else:

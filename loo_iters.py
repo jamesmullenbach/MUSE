@@ -150,7 +150,7 @@ for d_ix,(code_ix, word_ix) in enumerate(eval_dico):
 
         # JSON log / save best model / end of epoch
         logger.info("__log__:%s" % json.dumps(to_log))
-        trainer.save_best(to_log, params.val_metric)
+        trainer.save_best(to_log, params.val_metric, n_iter)
         logger.info('End of iteration %i.\n\n' % n_iter)
 
         #get rank of left-out code
@@ -184,4 +184,4 @@ with open('iter_results.csv', 'w') as of:
     w = csv.writer(of)
     w.writerow(['iters', 'MR', 'MRR'])
     for it in range(len(ranks)):
-        w.writerow([it_res+1, np.mean(ranks[it]), np.mean(rranks[it])])
+        w.writerow([it+1, np.mean(ranks[it]), np.mean(rranks[it])])

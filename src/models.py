@@ -43,19 +43,28 @@ def build_model(params, with_dis):
     Build all components of the model.
     """
     # source embeddings
-    src_dico, _src_emb = load_embeddings(params, source=True, full_vocab=params.full_vocab)
+    src_dico, _src_emb = load_embeddings(params, mode='src', full_vocab=params.full_vocab)
     params.src_dico = src_dico
     src_emb = nn.Embedding(len(src_dico), params.emb_dim, sparse=True)
     src_emb.weight.data.copy_(_src_emb)
 
     # target embeddings
     if params.tgt_lang:
-        tgt_dico, _tgt_emb = load_embeddings(params, source=False, full_vocab=params.full_vocab)
+        tgt_dico, _tgt_emb = load_embeddings(params, mode='tgt', full_vocab=params.full_vocab)
         params.tgt_dico = tgt_dico
         tgt_emb = nn.Embedding(len(tgt_dico), params.emb_dim, sparse=True)
         tgt_emb.weight.data.copy_(_tgt_emb)
     else:
         tgt_emb = None
+
+    # eval embeddings
+    if params.eval_emb:
+        eval_dico, _eval_emb = load_embeddings(params, mode='eval', full_vocab=params.full_vocab)
+        params.eval_dico = eval_dico
+        eval_emb = nn.Embedding(len(eval_dico), params.emb_dim, sparse=True)
+        eval_emb.weight.data.copy_(_eval_emb)
+    else:
+        eval_emb = None
 
     # mapping
     mapping = nn.Linear(params.emb_dim, params.emb_dim, bias=False)
@@ -79,4 +88,4 @@ def build_model(params, with_dis):
     if params.tgt_lang:
         params.tgt_mean = normalize_embeddings(tgt_emb.weight.data, params.normalize_embeddings)
 
-    return src_emb, tgt_emb, mapping, discriminator
+    return src_emb, tgt_emb, eval_emb, mapping, discriminator

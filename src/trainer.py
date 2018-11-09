@@ -30,13 +30,14 @@ logger = getLogger()
 
 class Trainer(object):
 
-    def __init__(self, src_emb, tgt_emb, glo_emb, mapping, discriminator, params):
+    def __init__(self, src_emb, tgt_emb, glo_emb, eval_emb, mapping, discriminator, params):
         """
         Initialize trainer script.
         """
         self.src_emb = src_emb
         self.tgt_emb = tgt_emb
         self.glo_emb = glo_emb
+        self.eval_emb = eval_emb
         self.src_dico = params.src_dico
         self.tgt_dico = getattr(params, 'tgt_dico', None)
         self.mapping = mapping
@@ -57,6 +58,8 @@ class Trainer(object):
         self.best_valid_metric = -1e12
 
         self.decrease_lr = False
+        self.it = 0
+        self.best_it = 0
 
     def get_dis_xy(self, volatile):
         """
@@ -140,18 +143,40 @@ class Trainer(object):
 
     def load_training_dico(self, dico_train, subsample, dico_eval=None):
         """
-        Load training dictionary.
+        Load training dictionary (set of ground truth pairs).
         """
         word2id1 = self.src_dico.word2id
         word2id2 = self.tgt_dico.word2id
 
         # identical character strings
-        if dico_train == "identical_char":
-            self.dico, src_dicts, tgt_dicts = load_identical_char_dico(word2id1, word2id2, subsample)
+        if dico_train == "identical_char" or dico_train == "desc":
+            suffix = '_w' if dico_train == "desc" else ""
+            self.dico, src_dicts, tgt_dicts = load_identical_char_dico(word2id1, word2id2, subsample, suffix=suffix)
             self.src_dico = Dictionary(*src_dicts, self.params.src_lang)
             self.tgt_dico = Dictionary(*tgt_dicts, self.params.tgt_lang)
             self.params.src_dico = self.src_dico
             self.params.tgt_dico = self.tgt_dico
+
+            if dico_eval:
+                #filter out validation pairs
+                if self.params.desc_align:
+                    #get word-level word2id
+                    word2id2 = self.params.eval_dico.word2id
+                _, eval_pairs = load_dictionary(dico_eval, word2id1, word2id2, return_pairs=True)
+                eval_codes = set([c for c,w in eval_pairs])
+                dico_pairs = []
+                #create new list of pairs, excluding codes that are in ground truth eval codes
+                for i, j in self.dico:
+                    src = self.src_dico.id2word[i.item()]
+                    tgt = self.tgt_dico.id2word[j.item()]
+                    if src not in eval_codes:
+                        dico_pairs.append((src, tgt))
+                dico = torch.LongTensor(len(pairs), 2)
+                for i, (word1, word2) in enumerate(pairs):
+                    dico[i, 0] = word2id1[word1]
+                    dico[i, 1] = word2id2[word2]
+                self.dico = dico
+
         # use one of the provided dictionary
         elif dico_train == "default":
             filename = '%s-%s.0-5000.txt' % (self.params.src_lang, self.params.tgt_lang)
@@ -180,9 +205,9 @@ class Trainer(object):
                     pairs.append((list(codes)[0], word))
             pairs = sorted(pairs, key=lambda x: word2id1[x[0]])
             if dico_eval:
+                #filter out validation pairs
                 _, eval_pairs = load_dictionary(dico_eval, word2id1, word2id2, return_pairs=True)
                 eval_pairs = set(eval_pairs)
-                #filter out validation pairs
                 pairs = [pair for pair in pairs if pair not in eval_pairs]
             dico = torch.LongTensor(len(pairs), 2)
             for i, (word1, word2) in enumerate(pairs):
@@ -265,12 +290,14 @@ class Trainer(object):
                                 % (old_lr, self.map_optimizer.param_groups[0]['lr']))
                 self.decrease_lr = True
 
-    def save_best(self, to_log, metric):
+    def save_best(self, to_log, metric, n_iter):
         """
         Save the best model for the given validation metric.
         """
         # best mapping for the given validation criterion
+        self.it = n_iter
         if to_log[metric] > self.best_valid_metric:
+            self.best_it = n_iter
             # new best mapping
             self.best_valid_metric = to_log[metric]
             logger.info('* Best value for "%s": %.5f' % (metric, to_log[metric]))
@@ -285,7 +312,7 @@ class Trainer(object):
         Reload the best mapping.
         """
         path = os.path.join(self.params.exp_path, 'best_mapping.pth')
-        logger.info('* Reloading the best model from %s ...' % path)
+        logger.info('* Reloading the best model from iteration %d at %s ...' % (self.best_it, path))
         # reload the model
         assert os.path.isfile(path)
         to_reload = torch.from_numpy(torch.load(path))
