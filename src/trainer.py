@@ -161,8 +161,8 @@ class Trainer(object):
                 #filter out validation pairs
                 if self.params.desc_align:
                     #get word-level word2id
-                    word2id2 = self.params.eval_dico.word2id
-                _, eval_pairs = load_dictionary(dico_eval, word2id1, word2id2, return_pairs=True)
+                    eval_word2id = self.params.eval_dico.word2id
+                _, eval_pairs = load_dictionary(dico_eval, word2id1, eval_word2id, return_pairs=True)
                 eval_codes = set([c for c,w in eval_pairs])
                 dico_pairs = []
                 #create new list of pairs, excluding codes that are in ground truth eval codes
@@ -171,8 +171,8 @@ class Trainer(object):
                     tgt = self.tgt_dico.id2word[j.item()]
                     if src not in eval_codes:
                         dico_pairs.append((src, tgt))
-                dico = torch.LongTensor(len(pairs), 2)
-                for i, (word1, word2) in enumerate(pairs):
+                dico = torch.LongTensor(len(dico_pairs), 2)
+                for i, (word1, word2) in enumerate(dico_pairs):
                     dico[i, 0] = word2id1[word1]
                     dico[i, 1] = word2id2[word2]
                 self.dico = dico
@@ -328,8 +328,8 @@ class Trainer(object):
 
         # load all embeddings
         logger.info("Reloading all embeddings for mapping ...")
-        params.src_dico, src_emb = load_embeddings(params, source=True, full_vocab=True)
-        params.tgt_dico, tgt_emb = load_embeddings(params, source=False, full_vocab=True)
+        params.src_dico, src_emb = load_embeddings(params, mode='src', full_vocab=True)
+        params.tgt_dico, tgt_emb = load_embeddings(params, mode='tgt', full_vocab=True)
 
         # apply same normalization as during training
         normalize_embeddings(src_emb, params.normalize_embeddings, mean=params.src_mean)

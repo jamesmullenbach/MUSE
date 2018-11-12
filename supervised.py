@@ -126,6 +126,11 @@ if params.removed_keys_file and params.glo_emb:
     # evaluate global ranking after combining the results in export()
     to_log = OrderedDict({'n_iter': n_iter})
     evaluator.global_ranking_eval(to_log)
+elif params.desc_align:
+    # evaluate on set of eval pairs
+    mr, mr1 = evaluator.uwc_retrieval_eval(to_log)
+    with open('sup_results.log', 'a') as af:
+        af.write('\t'.join([str(params), str(mr), str(mr1), str(wcmr), str(wcmr1)]) + "\n")
 else:
     to_log = OrderedDict({'n_iter': n_iter})
     mr, mr1 = evaluator.desc_to_code_retrieval_eval(to_log)

@@ -98,20 +98,21 @@ def load_dictionary(dico_train, word2id1, word2id2, exclude='', return_pairs=Fal
         return dico, pairs
 
 
-def get_word_translation_accuracy(lang1, word2id1, emb1, lang2, word2id2, emb2, method, dico_eval, exclude):
+def get_word_translation_accuracy(lang1, word2id1, emb1, lang2, word2id2, emb2, method, dico_eval, exclude, eval_pairs=None):
     """
     Given source and target word embeddings, and a dictionary,
     evaluate the translation accuracy using the precision@k.
     """
-    if dico_eval == 'default':
-        path = os.path.join(DIC_EVAL_PATH, '%s-%s.5000-6500.txt' % (lang1, lang2))
-    else:
-        path = dico_eval
-    dico = load_dictionary(path, word2id1, word2id2, exclude)
-    dico = dico.cuda() if emb1.is_cuda else dico
+    if eval_pairs is None:
+        if dico_eval == 'default':
+            path = os.path.join(DIC_EVAL_PATH, '%s-%s.5000-6500.txt' % (lang1, lang2))
+        else:
+            path = dico_eval
+        eval_pairs = load_dictionary(path, word2id1, word2id2, exclude)
+        eval_pairs = eval_pairs.cuda() if emb1.is_cuda else eval_pairs
 
-    assert dico[:, 0].max() < emb1.size(0)
-    assert dico[:, 1].max() < emb2.size(0)
+    assert eval_pairs[:, 0].max() < emb1.size(0)
+    assert eval_pairs[:, 1].max() < emb2.size(0)
 
     # normalize word embeddings
     emb1 = emb1 / emb1.norm(2, 1, keepdim=True).expand_as(emb1)
@@ -119,7 +120,7 @@ def get_word_translation_accuracy(lang1, word2id1, emb1, lang2, word2id2, emb2, 
 
     # nearest neighbors
     if method == 'nn':
-        query = emb1[dico[:, 0]]
+        query = emb1[eval_pairs[:, 0]]
         scores = query.mm(emb2.transpose(0, 1))
 
     # inverted softmax
@@ -131,7 +132,7 @@ def get_word_translation_accuracy(lang1, word2id1, emb1, lang2, word2id2, emb2, 
             scores = emb1.mm(emb2[i:i + bs].transpose(0, 1))
             scores.mul_(beta).exp_()
             scores.div_(scores.sum(0, keepdim=True).expand_as(scores))
-            word_scores.append(scores.index_select(0, dico[:, 0]))
+            word_scores.append(scores.index_select(0, eval_pairs[:, 0]))
         scores = torch.cat(word_scores, 1)
 
     # contextual dissimilarity measure
@@ -145,10 +146,10 @@ def get_word_translation_accuracy(lang1, word2id1, emb1, lang2, word2id2, emb2, 
         average_dist1 = torch.from_numpy(average_dist1).type_as(emb1)
         average_dist2 = torch.from_numpy(average_dist2).type_as(emb2)
         # queries / scores
-        query = emb1[dico[:, 0]]
+        query = emb1[eval_pairs[:, 0]]
         scores = query.mm(emb2.transpose(0, 1))
         scores.mul_(2)
-        scores.sub_(average_dist1[dico[:, 0]][:, None])
+        scores.sub_(average_dist1[eval_pairs[:, 0]][:, None])
         scores.sub_(average_dist2[None, :])
 
     else:
@@ -158,10 +159,10 @@ def get_word_translation_accuracy(lang1, word2id1, emb1, lang2, word2id2, emb2, 
     top_matches = scores.topk(10, 1, True)[1]
     for k in [1, 5, 10]:
         top_k_matches = top_matches[:, :k]
-        _matching = (top_k_matches == dico[:, 1][:, None].expand_as(top_k_matches)).sum(1)
+        _matching = (top_k_matches == eval_pairs[:, 1][:, None].expand_as(top_k_matches)).sum(1)
         # allow for multiple possible translations
         matching = {}
-        for i, src_id in enumerate(dico[:, 0].cpu().numpy()):
+        for i, src_id in enumerate(eval_pairs[:, 0].cpu().numpy()):
             matching[src_id] = min(matching.get(src_id, 0) + _matching[i], 1)
         # evaluate precision@k
         precision_at_k = 100 * np.mean(list(matching.values()))

@@ -14,12 +14,14 @@ from collections import defaultdict
 from gensim.models import KeyedVectors
 from nltk.tokenize import word_tokenize
 import numpy as np
+import torch
 from torch.autograd import Variable
 from torch import Tensor as torch_tensor
 
 from . import get_wordsim_scores, get_crosslingual_wordsim_scores, get_wordanalogy_scores
 from . import get_word_translation_accuracy
 from . import load_europarl_data, get_sent_translation_accuracy
+from .word_translation import load_dictionary
 from ..dico_builder import get_candidates, build_dictionary
 from src.utils import get_idf
 
@@ -111,7 +113,7 @@ class Evaluator(object):
         to_log['ws_crosslingual_scores'] = ws_crosslingual_scores
         to_log.update({'src_tgt_' + k: v for k, v in src_tgt_ws_scores.items()})
 
-    def word_translation(self, to_log, exclude):
+    def word_translation(self, to_log, exclude, eval_pairs=None):
         """
         Evaluation on word translation.
         """
@@ -125,7 +127,8 @@ class Evaluator(object):
                 self.tgt_dico.lang, self.tgt_dico.word2id, tgt_emb,
                 method=method,
                 dico_eval=self.params.dico_eval,
-                exclude=exclude
+                exclude=exclude,
+                eval_pairs=eval_pairs
             )
             to_log.update([('%s-%s' % (k, method), v) for k, v in results])
 
@@ -222,7 +225,19 @@ class Evaluator(object):
         """
         self.monolingual_wordsim(to_log)
         self.crosslingual_wordsim(to_log)
-        self.word_translation(to_log, exclude)
+        if self.params.desc_align:
+            #create eval_pairs: long tensor id2id map
+            #get word-level word2id
+            _, eval_code2word = load_dictionary(self.params.dico_eval, self.params.src_dico.word2id, self.params.eval_dico.word2id, return_pairs=True)
+            eval_pairs = torch.LongTensor(len(eval_code2word), 2)
+            for i, (code, _) in enumerate(eval_code2word):
+                eval_pairs[i, 0] = self.params.src_dico.word2id[code]
+                eval_pairs[i, 1] = self.params.tgt_dico.word2id[code + '_w']
+            if self.params.cuda:
+                eval_pairs = eval_pairs.cuda()
+            self.word_translation(to_log, exclude, eval_pairs=eval_pairs)
+        else:
+            self.word_translation(to_log, exclude)
         self.sent_translation(to_log)
         self.dist_mean_cosine(to_log)
 
@@ -252,6 +267,25 @@ class Evaluator(object):
         mean_rank = (np.mean(ranks_0) + np.mean(ranks_1)) / 2
         std_rank = np.std(np.concatenate((ranks_0, ranks_1)))
         print(f"mean rank of missing codes: {mean_rank} +/- {std_rank}")
+
+    def uwc_retrieval_eval(self, to_log):
+        #load eval pairs, get ranks
+        _, eval_code2word = load_dictionary(self.params.dico_eval, self.params.src_dico.word2id, self.params.eval_dico.word2id, return_pairs=True)
+        eval_code2desc = [(code, code + '_w') for code, _ in eval_code2word]
+        ranks = []
+        rranks = []
+        for ec, ecw in eval_code2desc:
+            desc_repr = self.tgt_emb.weight[self.params.tgt_dico.word2id[ecw]]
+            code_emb = self.src_emb
+            code2ix = self.src_dico.word2id
+            #get similarity of each code to the description
+            code_dists = code_emb.weight.mv(desc_repr).cpu().data.numpy()
+            closest = np.argsort(code_dists)
+            rank = np.where(closest == code2ix[ec])[0][0]+1
+            ranks.append(rank)
+            rranks.append(1/rank)
+        import pdb; pdb.set_trace() 
+
 
     def desc_to_code_retrieval_eval(self, to_log, which_is_codes='src'):
         #load aligned embeddings
