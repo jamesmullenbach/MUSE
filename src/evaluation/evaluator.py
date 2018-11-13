@@ -284,7 +284,6 @@ class Evaluator(object):
             rank = np.where(closest == code2ix[ec])[0][0]+1
             ranks.append(rank)
             rranks.append(1/rank)
-        import pdb; pdb.set_trace() 
 
 
     def desc_to_code_retrieval_eval(self, to_log, which_is_codes='src'):
