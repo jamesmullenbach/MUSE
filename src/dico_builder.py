@@ -14,7 +14,7 @@ from .utils import get_nn_avg_dist
 logger = getLogger()
 
 
-def get_candidates(emb1, emb2, params):
+def get_candidates(emb1, emb2, params, num_cands=5):
     """
     Get best translation pairs candidates.
     """
@@ -36,7 +36,7 @@ def get_candidates(emb1, emb2, params):
 
             # compute target words scores
             scores = emb2.mm(emb1[i:min(n_src, i + bs)].transpose(0, 1)).transpose(0, 1)
-            best_scores, best_targets = scores.topk(2, dim=1, largest=True, sorted=True)
+            best_scores, best_targets = scores.topk(num_cands, dim=1, largest=True, sorted=True)
 
             # update scores / potential targets
             all_scores.append(best_scores.cpu())
@@ -58,7 +58,7 @@ def get_candidates(emb1, emb2, params):
             scores.mul_(beta).exp_()
             scores.div_(scores.sum(0, keepdim=True).expand_as(scores))
 
-            best_scores, best_targets = scores.topk(2, dim=1, largest=True, sorted=True)
+            best_scores, best_targets = scores.topk(num_cands, dim=1, largest=True, sorted=True)
 
             # update scores / potential targets
             all_scores.append(best_scores.cpu())
@@ -67,7 +67,7 @@ def get_candidates(emb1, emb2, params):
         all_scores = torch.cat(all_scores, 1)
         all_targets = torch.cat(all_targets, 1)
 
-        all_scores, best_targets = all_scores.topk(2, dim=1, largest=True, sorted=True)
+        all_scores, best_targets = all_scores.topk(num_cands, dim=1, largest=True, sorted=True)
         all_targets = all_targets.gather(1, best_targets)
 
     # contextual dissimilarity measure
@@ -90,7 +90,7 @@ def get_candidates(emb1, emb2, params):
             scores = emb2.mm(emb1[i:min(n_src, i + bs)].transpose(0, 1)).transpose(0, 1)
             scores.mul_(2)
             scores.sub_(average_dist1[i:min(n_src, i + bs)][:, None] + average_dist2[None, :])
-            best_scores, best_targets = scores.topk(2, dim=1, largest=True, sorted=True)
+            best_scores, best_targets = scores.topk(num_cands, dim=1, largest=True, sorted=True)
 
             # update scores / potential targets
             all_scores.append(best_scores.cpu())
@@ -101,15 +101,17 @@ def get_candidates(emb1, emb2, params):
 
     all_pairs = torch.cat([
         torch.arange(0, all_targets.size(0)).long().unsqueeze(1),
-        all_targets[:, 0].unsqueeze(1)
+        all_targets#[:, 0].unsqueeze(1)
     ], 1)
 
     # sanity check
-    assert all_scores.size() == all_pairs.size() == (n_src, 2)
+    #assert all_scores.size() == all_pairs.size() == (n_src, 2)
 
     # sort pairs by score confidence
-    diff = all_scores[:, 0] - all_scores[:, 1]
-    reordered = diff.sort(0, descending=True)[1]
+    #diff = all_scores[:, 0] - all_scores[:, 1]
+    avg_sims = torch.mean(all_scores, 1)
+    #reordered = diff.sort(0, descending=True)[1]
+    reordered = avg_sims.sort(0, descending=True)[1]
     all_scores = all_scores[reordered]
     all_pairs = all_pairs[reordered]
 
@@ -140,7 +142,7 @@ def get_candidates(emb1, emb2, params):
     return all_pairs
 
 
-def build_dictionary(src_emb, tgt_emb, params, s2t_candidates=None, t2s_candidates=None, log=True):
+def build_dictionary(src_emb, tgt_emb, params, s2t_candidates=None, t2s_candidates=None, log=True, num_cands=5):
     """
     Build a training dictionary given current embeddings / mapping.
     """
@@ -152,24 +154,30 @@ def build_dictionary(src_emb, tgt_emb, params, s2t_candidates=None, t2s_candidat
 
     if s2t:
         if s2t_candidates is None:
-            s2t_candidates = get_candidates(src_emb, tgt_emb, params)
+            s2t_candidates = get_candidates(src_emb, tgt_emb, params, num_cands)
     if t2s:
         if t2s_candidates is None:
-            t2s_candidates = get_candidates(tgt_emb, src_emb, params)
+            t2s_candidates = get_candidates(tgt_emb, src_emb, params, num_cands)
         t2s_candidates = torch.cat([t2s_candidates[:, 1:], t2s_candidates[:, :1]], 1)
 
     if params.dico_build == 'S2T':
-        dico = s2t_candidates
+        dico = s2t_candidates[:,:2]
     elif params.dico_build == 'T2S':
-        dico = t2s_candidates
+        dico = t2s_candidates[:,:2]
     else:
-        s2t_candidates = set([(a, b) for a, b in s2t_candidates.numpy()])
-        t2s_candidates = set([(a, b) for a, b in t2s_candidates.numpy()])
         if params.dico_build == 'S2T|T2S':
+            s2t_candidates = set([(a, b) for a, b in s2t_candidates.numpy()[:,:2]])
+            t2s_candidates = set([(a, b) for a, b in t2s_candidates.numpy()[:,:2]])
             final_pairs = s2t_candidates | t2s_candidates
         else:
             assert params.dico_build == 'S2T&T2S'
-            final_pairs = s2t_candidates & t2s_candidates
+            s2t_map = {s: set(cands) for s, *cands in s2t_candidates.numpy()}
+            final_pairs = set()
+            for *cands, t in t2s_candidates.numpy():
+                for cand in cands:
+                    if cand in s2t_map and t in s2t_map[cand]:
+                        final_pairs.add((cand, t))
+            #final_pairs = s2t_candidates & t2s_candidates
             if len(final_pairs) == 0:
                 logger.warning("Empty intersection ...")
                 return None

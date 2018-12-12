@@ -37,7 +37,7 @@ parser.add_argument("--max_vocab", type=int, default=200000, help="Maximum vocab
 # training refinement
 parser.add_argument("--n_refinement", type=int, default=5, help="Number of refinement iterations (0 to disable the refinement procedure)")
 # validation
-parser.add_argument("--val_metric", type=str, default="precision_at_1-nn", help="validation metric to choose the best mapping e.g. precision_at_1-csls_knn_10")
+parser.add_argument("--val_metric", type=str, default="unsup", help="validation metric to choose the best mapping e.g. precision_at_1-csls_knn_10")
 # dictionary creation parameters (for refinement)
 parser.add_argument("--dico_train", type=str, help="Path to training dictionary (default: use identical character strings)")
 parser.add_argument("--dico_eval", type=str, default="default", help="Path to evaluation dictionary")
@@ -73,6 +73,12 @@ assert os.path.isfile(params.src_emb)
 assert os.path.isfile(params.tgt_emb)
 assert params.dico_eval == 'default' or os.path.isfile(params.dico_eval)
 assert params.export in ["", "txt", "pth"]
+
+if params.val_metric == 'unsup':
+    params.val_metric = f'mean_cosine-{params.dico_method}-{params.dico_build}-{params.dico_max_size}'
+
+if params.cuda:
+    torch.cuda.set_device(7)
 
 # build logger / model / trainer / evaluator
 logger = initialize_exp(params)
@@ -134,6 +140,6 @@ elif params.desc_align:
 else:
     to_log = OrderedDict({'n_iter': n_iter})
     mr, mr1 = evaluator.desc_to_code_retrieval_eval(to_log)
-    wcmr, wcmr1 = evaluator.word_to_codes_retrieval_eval(to_log)
+    #wcmr, wcmr1 = evaluator.word_to_codes_retrieval_eval(to_log)
     with open('sup_results.log', 'a') as af:
-        af.write('\t'.join([str(params), str(mr), str(mr1), str(wcmr), str(wcmr1)]) + "\n")
+        af.write('\t'.join([str(params), str(mr), str(mr1)]) + "\n")

@@ -55,10 +55,12 @@ parser.add_argument("--subsample", type=float, default=1, help="Fraction of matc
 parser.add_argument("--src_emb", type=str, default='', help="Reload source embeddings")
 parser.add_argument("--tgt_emb", type=str, default='', help="Reload target embeddings")
 parser.add_argument("--glo_emb", type=str, default="", help="global embeddings file for evaluation")
+parser.add_argument("--eval_emb", type=str, default='', help="path to evaluation embeddings for e.g. full-description alignment")
 parser.add_argument("--removed_keys_file", type=str, help="file containing keys removed from site 0. site 1 file will be inferred")
 parser.add_argument("--normalize_embeddings", type=str, default="", help="Normalize embeddings before training")
 parser.add_argument("--full_vocab", action="store_true", help="flag to signify the input embeddings comprise the whole vocabulary")
 parser.add_argument("--cross_modal", action="store_true", help="flag to signify we're doing cross-modal alignment, so evaluate on the description stuff")
+parser.add_argument("--desc_align", action="store_true", help="flag to signify we're doing full-description alignment")
 
 
 # parse parameters
@@ -66,7 +68,7 @@ params = parser.parse_args()
 
 # check parameters
 assert not params.cuda or torch.cuda.is_available()
-assert params.dico_train in ["identical_char", "default"] or os.path.isfile(params.dico_train)
+assert params.dico_train in ["identical_char", "default", "uwc", "owc", "desc"] or os.path.isfile(params.dico_train)
 assert params.dico_build in ["S2T", "T2S", "S2T|T2S", "S2T&T2S"]
 assert params.dico_max_size == 0 or (params.dico_max_size < params.dico_max_rank or params.dico_max_rank == 0)
 assert params.dico_max_size == 0 or params.dico_max_size > params.dico_min_size
@@ -80,12 +82,12 @@ params.leave_one_out = True
 # build logger / model / trainer / evaluator
 #do all this stuff once to get the word2id's
 logger = initialize_exp(params)
-src_emb, tgt_emb, mapping, _ = build_model(params, False)
+src_emb, tgt_emb, eval_emb, mapping, _ = build_model(params, False)
 if params.glo_emb:
     glo_emb = KeyedVectors.load_word2vec_format(params.glo_emb) if params.glo_emb else None
 else:
     glo_emb = None
-trainer = Trainer(src_emb, tgt_emb, glo_emb, mapping, None, params)
+trainer = Trainer(src_emb, tgt_emb, glo_emb, eval_emb, mapping, None, params)
 evaluator = Evaluator(trainer)
 
 # load a training dictionary. if a dictionary path is not provided, use a default
@@ -147,7 +149,7 @@ for d_ix,(code_ix, word_ix) in enumerate(eval_dico):
 
         # JSON log / save best model / end of epoch
         logger.info("__log__:%s" % json.dumps(to_log))
-        trainer.save_best(to_log, params.val_metric)
+        trainer.save_best(to_log, params.val_metric, n_iter)
         logger.info('End of iteration %i.\n\n' % n_iter)
 
     #get rank of left-out code

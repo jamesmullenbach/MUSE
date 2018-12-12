@@ -201,14 +201,14 @@ class Evaluator(object):
             # temp params / dictionary generation
             _params = deepcopy(self.params)
             _params.dico_method = dico_method
-            _params.dico_build = dico_build
+            #_params.dico_build = dico_build
             _params.dico_threshold = 0
-            _params.dico_max_rank = 10000
+            #_params.dico_max_rank = 10000
             _params.dico_min_size = 0
-            _params.dico_max_size = dico_max_size
+            #_params.dico_max_size = dico_max_size
             s2t_candidates = get_candidates(src_emb, tgt_emb, _params)
             t2s_candidates = get_candidates(tgt_emb, src_emb, _params)
-            dico = build_dictionary(src_emb, tgt_emb, _params, s2t_candidates, t2s_candidates, log=False)
+            dico = build_dictionary(src_emb, tgt_emb, _params, s2t_candidates, t2s_candidates, num_cands=2, log=False)
             # mean cosine
             if dico is None:
                 mean_cosine = -1e9
@@ -217,7 +217,7 @@ class Evaluator(object):
             mean_cosine = mean_cosine.item() if isinstance(mean_cosine, torch_tensor) else mean_cosine
             logger.info("Mean cosine (%s method, %s build, %i max size): %.5f"
                         % (dico_method, _params.dico_build, dico_max_size, mean_cosine))
-            to_log['mean_cosine-%s-%s-%i' % (dico_method, _params.dico_build, dico_max_size)] = mean_cosine
+            to_log['mean_cosine-%s-%s-%i' % (dico_method, _params.dico_build, _params.dico_max_size)] = mean_cosine
 
     def all_eval(self, to_log, exclude=''):
         """

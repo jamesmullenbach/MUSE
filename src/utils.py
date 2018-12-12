@@ -9,6 +9,7 @@ import os
 import io
 import re
 import sys
+import time
 import pickle
 import random
 import inspect
@@ -144,7 +145,7 @@ def get_nn_avg_dist(emb, query, knn):
             # gpu mode
             res = faiss.StandardGpuResources()
             config = faiss.GpuIndexFlatConfig()
-            config.device = 0
+            config.device = 7
             index = faiss.GpuIndexFlatIP(res, emb.shape[1], config)
         else:
             # cpu mode
@@ -240,9 +241,9 @@ def get_exp_path(params):
         if hasattr(params, 'subsample'):
             pref = 'loo' if hasattr(params, 'leave_one_out') else 'sup'
             if params.cross_modal:
-                if params.dico_train == 'single_word_codes.txt':
+                if params.dico_train == 'single_word_codes.txt' or params.dico_train == 'owc':
                     sup_type = 'owc' 
-                elif params.dico_train == 'single_word_codes2.txt':
+                elif params.dico_train == 'single_word_codes2.txt' or params.dico_train == 'uwc':
                     sup_type = 'uwc'
                 else:
                     sup_type = 'unk'
@@ -251,6 +252,7 @@ def get_exp_path(params):
                 name = f'{loo}_{params.src_lang}_{params.tgt_lang}_emb{params.emb_dim}_iters{params.n_refinement}_sub{int(100*params.subsample)}'
         else:
             name = f'unsup_{params.src_lang}_{params.tgt_lang}_emb{params.emb_dim}_train{params.n_epochs}_iters{params.n_refinement}'
+        name += "%s.%d" % (time.strftime('%b_%d_%H:%M:%S', time.localtime()), round(time.time() * 1000) % 1000)
         exp_path = os.path.join(exp_folder, name)
     else:
         exp_path = os.path.join(exp_folder, params.exp_id)

@@ -17,6 +17,7 @@ import torch
 from torch.autograd import Variable
 from torch.nn import functional as F
 from tqdm import tqdm
+from nltk.tokenize import RegexpTokenizer
 
 from .utils import get_optimizer, load_embeddings, normalize_embeddings, export_embeddings
 from .utils import clip_parameters
@@ -60,6 +61,15 @@ class Trainer(object):
         self.decrease_lr = False
         self.it = 0
         self.best_it = 0
+        self.dico_pairs = []
+
+        self.tok = RegexpTokenizer(r'\w+')
+        self.code2desc = {}                                                                                                            
+        with open('/data/mimicdata/raw/ICD9_descriptions') as f:                                                                               
+            r = csv.reader(f, delimiter='\t')                                  
+            for row in r:                                                                                                                      
+                codename = 'd_' + row[0].replace('.', '')                      
+                self.code2desc[codename] = row[1]
 
     def get_dis_xy(self, volatile):
         """
@@ -204,11 +214,11 @@ class Trainer(object):
                 if len(codes) == 1:
                     pairs.append((list(codes)[0], word))
             pairs = sorted(pairs, key=lambda x: word2id1[x[0]])
-            if dico_eval:
-                #filter out validation pairs
-                _, eval_pairs = load_dictionary(dico_eval, word2id1, word2id2, return_pairs=True)
-                eval_pairs = set(eval_pairs)
-                pairs = [pair for pair in pairs if pair not in eval_pairs]
+            #if dico_eval:
+            #    #filter out validation pairs
+            #    _, eval_pairs = load_dictionary(dico_eval, word2id1, word2id2, return_pairs=True)
+            #    eval_pairs = set(eval_pairs)
+            #    pairs = [pair for pair in pairs if pair not in eval_pairs]
             dico = torch.LongTensor(len(pairs), 2)
             for i, (word1, word2) in enumerate(pairs):
                 dico[i, 0] = word2id1[word1]
@@ -216,7 +226,17 @@ class Trainer(object):
             self.dico = dico
         # dictionary provided by the user
         else:
-            self.dico = load_dictionary(dico_train, word2id1, word2id2)
+            dico, pairs = load_dictionary(dico_train, word2id1, word2id2, return_pairs=True)
+            #if dico_eval:
+            #    #filter out validation pairs
+            #    _, eval_pairs = load_dictionary(dico_eval, word2id1, word2id2, return_pairs=True)
+            #    eval_pairs = set(eval_pairs)
+            #    pairs = [pair for pair in pairs if pair not in eval_pairs]
+            dico = torch.LongTensor(len(pairs), 2)
+            for i, (word1, word2) in enumerate(pairs):
+                dico[i, 0] = word2id1[word1]
+                dico[i, 1] = word2id2[word2]
+            self.dico = dico
 
         # cuda
         if self.params.cuda:
@@ -236,6 +256,11 @@ class Trainer(object):
         new_dico_pairs = [(self.src_dico.id2word[i.item()], self.tgt_dico.id2word[j.item()]) for i, j in new_dico]
         for pair in new_dico_pairs:
             if pair not in self.dico_pairs:
+                code, word = pair
+                if code in self.code2desc:
+                    toks = [t.lower() for t in self.tok.tokenize(self.code2desc[code])]
+                    if word in toks:
+                        self.dico_pairs.append(pair)
                 self.dico_pairs.append(pair)
         self.dico_pairs = sorted(self.dico_pairs, key=lambda x: self.src_dico.word2id[x[0]])
         self.dico = torch.LongTensor(len(self.dico_pairs), 2)
@@ -313,6 +338,7 @@ class Trainer(object):
         """
         path = os.path.join(self.params.exp_path, 'best_mapping.pth')
         logger.info('* Reloading the best model from iteration %d at %s ...' % (self.best_it, path))
+        print('* Reloading the best model from iteration %d at %s ...' % (self.best_it, path))
         # reload the model
         assert os.path.isfile(path)
         to_reload = torch.from_numpy(torch.load(path))

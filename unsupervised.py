@@ -21,9 +21,6 @@ from src.trainer import Trainer
 from src.evaluation import Evaluator
 
 
-VALIDATION_METRIC = 'mean_cosine-csls_knn_10-S2T-10000'
-
-
 # main
 parser = argparse.ArgumentParser(description='Unsupervised training')
 parser.add_argument("--seed", type=int, default=-1, help="Initialization seed")
@@ -80,9 +77,11 @@ parser.add_argument("--normalize_embeddings", type=str, default="", help="Normal
 parser.add_argument("--full_vocab", action="store_true", help="flag to signify the input embeddings comprise the whole vocabulary")
 parser.add_argument("--cross_modal", action="store_true", help="flag to signify we're doing cross-modal alignment, so evaluate on the description stuff")
 
-
 # parse parameters
 params = parser.parse_args()
+params.eval_emb = None
+
+VALIDATION_METRIC = f'mean_cosine-{params.dico_method}-{params.dico_build}-{params.dico_max_rank}'
 
 # check parameters
 assert not params.cuda or torch.cuda.is_available()
@@ -98,12 +97,12 @@ assert params.export in ["", "txt", "pth"]
 
 # build model / trainer / evaluator
 logger = initialize_exp(params)
-src_emb, tgt_emb, mapping, discriminator = build_model(params, True)
+src_emb, tgt_emb, _, mapping, discriminator = build_model(params, True)
 if params.glo_emb:
     glo_emb = KeyedVectors.load_word2vec_format(params.glo_emb)
 else:
     glo_emb = None
-trainer = Trainer(src_emb, tgt_emb, glo_emb, mapping, discriminator, params)
+trainer = Trainer(src_emb, tgt_emb, glo_emb, params.eval_emb, mapping, discriminator, params)
 evaluator = Evaluator(trainer)
 
 
@@ -151,7 +150,7 @@ if params.adversarial:
 
         # JSON log / save best model / end of epoch
         logger.info("__log__:%s" % json.dumps(to_log))
-        trainer.save_best(to_log, VALIDATION_METRIC)
+        trainer.save_best(to_log, VALIDATION_METRIC, n_epoch)
         logger.info('End of epoch %i.\n\n' % n_epoch)
 
         # update the learning rate (stop if too small)
@@ -186,7 +185,7 @@ if params.n_refinement > 0:
 
         # JSON log / save best model / end of epoch
         logger.info("__log__:%s" % json.dumps(to_log))
-        trainer.save_best(to_log, VALIDATION_METRIC)
+        trainer.save_best(to_log, VALIDATION_METRIC, n_epoch+n_iter)
         logger.info('End of refinement iteration %i.\n\n' % n_iter)
 
 
